@@ -319,7 +319,7 @@ export function typography(s: string, options: TypographyOptions = {}): string {
   }
 
   if (quotes === "on" || (quotes.startsWith("smart") && s.includes("'s"))) {
-    s = s.replace("'s", "'s");
+    s = s.replaceAll("'s", "\u2019s");
   }
 
   if (quotes.startsWith("smart")) {

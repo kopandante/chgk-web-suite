@@ -7,12 +7,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormatSource, FormatText } from "@/components/format-text";
 import {
-  deletePackage,
-  getPackage,
-  getQuestionsByPackage,
-  getToursByPackage,
-} from "@/lib/db/client";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -23,6 +17,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  deletePackage,
+  getPackage,
+  getQuestionsByPackage,
+  getToursByPackage,
+} from "@/lib/db/client";
 
 export default function PackagePage() {
   const params = useParams();
@@ -35,7 +35,7 @@ export default function PackagePage() {
     mutationFn: () => deletePackage(packageId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push("/packages");
+      router.push("/");
     },
   });
 
@@ -80,14 +80,14 @@ export default function PackagePage() {
         </div>
         <div className="flex gap-2">
           <Link
-            href={`/packages/${packageId}/edit`}
+            href={`/${packageId}/edit`}
             className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
           >
             <Edit className="h-4 w-4" />
             Редактировать
           </Link>
           <Link
-            href={`/packages/${packageId}/export`}
+            href={`/${packageId}/export`}
             className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
           >
             <Download className="h-4 w-4" />
@@ -172,6 +172,12 @@ export default function PackagePage() {
                 <div className="text-sm text-muted-foreground font-medium">
                   Вопрос {question.number ?? index + 1}
                 </div>
+                {question.handout && (
+                  <div className="bg-muted/50 rounded-md p-3 text-sm">
+                    <span className="font-medium text-muted-foreground">Раздатка: </span>
+                    <FormatText text={question.handout} />
+                  </div>
+                )}
                 <div className="whitespace-pre-wrap">
                   <FormatText text={question.question} />
                 </div>

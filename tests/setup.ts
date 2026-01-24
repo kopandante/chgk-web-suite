@@ -1,4 +1,11 @@
-// Test setup - provide DOM environment for browser APIs
+// Test setup - register happy-dom globals
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-GlobalRegistrator.register();
+let registered = false;
+
+export function registerDom() {
+  if (!registered) {
+    GlobalRegistrator.register();
+    registered = true;
+  }
+}

@@ -43,7 +43,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS images (
     id TEXT PRIMARY KEY,
     question_id TEXT NOT NULL,
-    data BLOB NOT NULL,
+    data TEXT NOT NULL,
     content_type TEXT NOT NULL,
     filename TEXT,
     created_at INTEGER NOT NULL,
@@ -95,7 +95,7 @@ export interface Question {
 export interface Image {
   id: string;
   question_id: string;
-  data: Uint8Array;
+  data: string; // Base64 encoded
   content_type: string;
   filename: string | null;
   created_at: number;

@@ -16,7 +16,7 @@ export default function PackagesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Мои пакеты</h1>
         <Link
-          href="/packages/new"
+          href="/new"
           className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
@@ -37,7 +37,7 @@ export default function PackagesPage() {
           {packages.map((pkg) => (
             <Link
               key={pkg.id}
-              href={`/packages/${pkg.id}`}
+              href={`/${pkg.id}`}
               className="block rounded-lg border bg-card p-6 hover:border-primary transition-colors"
             >
               <div className="font-medium">{pkg.title}</div>

@@ -758,14 +758,9 @@ export class ChgkParser {
       // Ignore errors
     }
 
-    let tourCnt = 0;
-
     for (const element of finalStructure) {
       if (element[0] === "Question") {
         this.postprocessQuestion(element[1] as Question);
-      } else if (element[0] === "tour" && TOUR_NUMBERS_AS_WORDS[tourCnt]) {
-        element[1] = `${TOUR_NUMBERS_AS_WORDS[tourCnt]} тур`;
-        tourCnt += 1;
       }
     }
 
@@ -780,6 +775,21 @@ export function chgkParse(
 ): ParsedStructure {
   const parser = new ChgkParser(options, defaultAuthor);
   return parser.parse(text);
+}
+
+/**
+ * Parse TXT file content with underscore escaping (like chgksuite)
+ * Escapes underscores before parsing so they appear as \_ in output
+ */
+export function parseTxt(
+  text: string,
+  options?: ParserOptions,
+  defaultAuthor = "",
+): ParsedStructure {
+  // Escape underscores before parsing (matching chgksuite behavior)
+  const escapedText = text.replace(/_/g, "\\_");
+  const parser = new ChgkParser(options, defaultAuthor);
+  return parser.parse(escapedText);
 }
 
 export * from "./regexes";

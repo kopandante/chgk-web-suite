@@ -15,14 +15,10 @@ export interface ParseDocxResult {
   images: DocxImage[];
 }
 
-function generateImageId(): string {
-  return `img_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-}
-
 function getExtensionFromContentType(contentType: string): string {
   const mapping: Record<string, string> = {
     "image/png": "png",
-    "image/jpeg": "jpg",
+    "image/jpeg": "jpeg",
     "image/gif": "gif",
     "image/webp": "webp",
     "image/bmp": "bmp",
@@ -33,21 +29,40 @@ function getExtensionFromContentType(contentType: string): string {
 }
 
 export async function parseDocxToHtml(
-  file: File | ArrayBuffer,
+  file: File | ArrayBuffer | Buffer,
+  filename = "",
 ): Promise<{ html: string; images: DocxImage[] }> {
   const images: DocxImage[] = [];
   const imageReplacements: Map<string, string> = new Map();
 
-  const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
+  // Generate image name prefix from filename (without extension)
+  const prefix = filename.replace(/\.docx$/i, "");
+
+  // Counter per extension (like chgksuite's generate_imgname)
+  const extensionCounters: Map<string, number> = new Map();
+
+  // Determine input type for mammoth
+  let mammothInput: { arrayBuffer: ArrayBuffer } | { buffer: Buffer };
+  if (file instanceof File) {
+    mammothInput = { arrayBuffer: await file.arrayBuffer() };
+  } else if (Buffer.isBuffer(file)) {
+    mammothInput = { buffer: file };
+  } else {
+    mammothInput = { arrayBuffer: file };
+  }
 
   const result = await mammoth.convertToHtml(
-    { arrayBuffer },
+    mammothInput,
     {
       convertImage: mammoth.images.imgElement(async (image) => {
         const imageData = await image.read("base64");
         const contentType = image.contentType;
         const extension = getExtensionFromContentType(contentType);
-        const id = generateImageId();
+
+        // Generate sequential image ID per extension like chgksuite: prefix_001.ext
+        const counter = (extensionCounters.get(extension) || 0) + 1;
+        extensionCounters.set(extension, counter);
+        const id = prefix ? `${prefix}_${String(counter).padStart(3, "0")}` : `img_${String(counter).padStart(3, "0")}`;
 
         // Convert base64 to ArrayBuffer
         const binaryString = atob(imageData);
@@ -63,26 +78,41 @@ export async function parseDocxToHtml(
           extension,
         });
 
-        imageReplacements.set(id, `(img ${id}.${extension})`);
+        imageReplacements.set(`${id}.${extension}`, `(img ${id}.${extension})`);
 
-        return { src: `IMGPATH(${id})` };
+        return { src: `IMGPATH(${id}.${extension})` };
       }),
     },
   );
 
   let html = result.value;
 
-  // Replace image placeholders
-  for (const [id, replacement] of imageReplacements) {
-    html = html.replace(`<img src="IMGPATH(${id})" />`, replacement);
+  // Replace image placeholders - handle img tags with any attributes
+  for (const [idWithExt, replacement] of imageReplacements) {
+    // Escape special regex characters in ID (especially parentheses)
+    const escapedId = idWithExt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match img tags with IMGPATH(id.ext) in src, regardless of other attributes
+    const imgRegex = new RegExp(`<img[^>]*src="IMGPATH\\(${escapedId}\\)"[^>]*\\/?>`, "gi");
+    html = html.replace(imgRegex, replacement);
   }
 
   return { html, images };
 }
 
 function htmlToText(html: string): string {
-  // Replace underscores to preserve them
-  let text = html.replace(/_/g, "$$$UNDERSCORE$$$");
+  // Protect image placeholders from underscore escaping
+  // Use non-greedy match to handle filenames with parentheses like (48v)
+  const imagePlaceholders: string[] = [];
+  let text = html.replace(/\(img\s+.+?\.[a-z]+\)/gi, (match) => {
+    imagePlaceholders.push(match);
+    return `IMGPLACEHOLDER${imagePlaceholders.length - 1}ENDIMG`;
+  });
+
+  // Replace underscores to preserve them (use marker without $ to avoid regex replacement issues)
+  text = text.replace(/_/g, "UNDERSCORE_MARKER");
+
+  // Protect &amp; from being decoded by DOMParser
+  text = text.replace(/&amp;/g, "AMPERSAND_MARKER");
 
   // Remove consecutive strong/em tags
   text = text.replace(/<\/strong><strong>/g, "");
@@ -91,6 +121,32 @@ function htmlToText(html: string): string {
   // Create a simple HTML parser
   const parser = new DOMParser();
   const doc = parser.parseFromString(text, "text/html");
+
+  // Preserve formatting: add markdown markers around em/strong/i/b tags
+  for (const tag of doc.querySelectorAll("em, i")) {
+    tag.insertBefore(document.createTextNode("_"), tag.firstChild);
+    tag.appendChild(document.createTextNode("_"));
+  }
+  for (const tag of doc.querySelectorAll("strong, b")) {
+    tag.insertBefore(document.createTextNode("__"), tag.firstChild);
+    tag.appendChild(document.createTextNode("__"));
+  }
+
+  // Process links: add URL to text like chgksuite
+  for (const link of doc.querySelectorAll("a")) {
+    const href = link.getAttribute("href");
+    const linkText = link.textContent || "";
+
+    if (linkText.startsWith("http")) {
+      // Text is already a URL, just unwrap
+      continue;
+    }
+
+    if (href && href.startsWith("http") && !href.includes(linkText.trim())) {
+      // Add URL in parentheses after text
+      link.textContent = `${linkText} (${href})`;
+    }
+  }
 
   // Remove style tags
   for (const style of doc.querySelectorAll("style")) {
@@ -155,7 +211,13 @@ function htmlToText(html: string): string {
     .replace(/ :/g, ":")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/\$\$\$UNDERSCORE\$\$\$/g, "\\_");
+    .replace(/UNDERSCORE_MARKER/g, "\\_")
+    .replace(/AMPERSAND_MARKER/g, "&amp;");
+
+  // Restore image placeholders (they were protected from underscore escaping)
+  result = result.replace(/IMGPLACEHOLDER(\d+)ENDIMG/g, (_, index) => {
+    return imagePlaceholders[parseInt(index, 10)];
+  });
 
   // Fix bad italic from Word
   result = result.replace(/_ *_/g, "");
@@ -164,11 +226,14 @@ function htmlToText(html: string): string {
 }
 
 export async function parseDocx(
-  file: File | ArrayBuffer,
+  file: File | ArrayBuffer | Buffer,
   options?: ParserOptions,
   defaultAuthor = "",
+  filename = "",
 ): Promise<ParseDocxResult> {
-  const { html, images } = await parseDocxToHtml(file);
+  // Get filename from File object if not provided
+  const docxFilename = filename || (file instanceof File ? file.name : "");
+  const { html, images } = await parseDocxToHtml(file, docxFilename);
 
   const text = htmlToText(html);
 

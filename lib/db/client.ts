@@ -3,7 +3,7 @@
 
 import { get, set } from "idb-keyval";
 import type { Database } from "sql.js";
-import { type Package, type Question, SCHEMA, type Tour } from "./schema";
+import { type Image, type Package, type Question, SCHEMA, type Tour } from "./schema";
 
 const DB_KEY = "chgk-web-db";
 const SQL_WASM_URL = "https://sql.js.org/dist/sql-wasm.wasm";
@@ -403,9 +403,28 @@ export async function deleteQuestion(id: string): Promise<void> {
 
 // Bulk import from parsed structure
 
+export interface ImportImage {
+  id: string;
+  data: ArrayBuffer;
+  contentType: string;
+  extension: string;
+}
+
+// Extract image IDs from text like "(img filename.png)"
+function extractImageIds(text: string): string[] {
+  const regex = /\(img\s+([A-Za-z0-9_()-]+)\.[a-z]+\)/gi;
+  const ids: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    ids.push(match[1]);
+  }
+  return ids;
+}
+
 export async function importParsedPackage(
   title: string,
   structure: Array<[string, unknown]>,
+  images: ImportImage[] = [],
 ): Promise<string> {
   const database = await loadDatabase();
   const now = Date.now();
@@ -492,6 +511,42 @@ export async function importParsedPackage(
         ],
       );
 
+      // Save images referenced in this question
+      if (images.length > 0) {
+        const allText = [
+          questionText,
+          answerText,
+          zachetText,
+          nezachetText,
+          commentText,
+          sourceText,
+          authorText,
+          handoutText,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        const imageIds = extractImageIds(allText);
+        for (const imageId of imageIds) {
+          const image = images.find((img) => img.id === imageId);
+          if (image) {
+            const base64Data = arrayBufferToBase64(image.data);
+            database.run(
+              `INSERT INTO images (id, question_id, data, content_type, filename, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                image.id,
+                questionId,
+                base64Data,
+                image.contentType,
+                `${image.id}.${image.extension}`,
+                now,
+              ],
+            );
+          }
+        }
+      }
+
       questionOrder++;
     }
   }
@@ -507,6 +562,127 @@ function stringifyField(value: unknown): string | null {
     return value.map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join("\n");
   }
   return JSON.stringify(value);
+}
+
+// Image operations
+
+// Convert ArrayBuffer to Base64 string
+function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Convert Base64 string to Uint8Array
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function createImage(data: {
+  question_id: string;
+  data: Uint8Array | ArrayBuffer | string; // Uint8Array, ArrayBuffer or Base64 string
+  content_type: string;
+  filename?: string;
+}): Promise<Image> {
+  const database = await loadDatabase();
+  const now = Date.now();
+  const id = generateId();
+
+  // Convert to Base64 if needed
+  const base64Data = typeof data.data === "string" ? data.data : arrayBufferToBase64(data.data);
+
+  database.run(
+    `INSERT INTO images (id, question_id, data, content_type, filename, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, data.question_id, base64Data, data.content_type, data.filename || null, now],
+  );
+
+  await saveDatabase();
+
+  return {
+    id,
+    question_id: data.question_id,
+    data: base64Data,
+    content_type: data.content_type,
+    filename: data.filename || null,
+    created_at: now,
+  };
+}
+
+export async function getImage(id: string): Promise<Image | null> {
+  const database = await loadDatabase();
+  const result = database.exec("SELECT * FROM images WHERE id = ?", [id]);
+
+  if (!result.length || !result[0].values.length) return null;
+
+  const columns = result[0].columns;
+  const row = result[0].values[0];
+  const img: Record<string, unknown> = {};
+  columns.forEach((col, i) => {
+    img[col] = row[i];
+  });
+
+  return img as unknown as Image;
+}
+
+export async function getImagesByQuestion(questionId: string): Promise<Image[]> {
+  const database = await loadDatabase();
+  const result = database.exec("SELECT * FROM images WHERE question_id = ? ORDER BY created_at", [
+    questionId,
+  ]);
+
+  if (!result.length) return [];
+
+  const columns = result[0].columns;
+  return result[0].values.map((row) => {
+    const img: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      img[col] = row[i];
+    });
+    return img as unknown as Image;
+  });
+}
+
+export async function getImagesByPackage(packageId: string): Promise<Image[]> {
+  const database = await loadDatabase();
+  const result = database.exec(
+    `SELECT images.* FROM images
+     INNER JOIN questions ON images.question_id = questions.id
+     WHERE questions.package_id = ?
+     ORDER BY questions.order_num, images.created_at`,
+    [packageId],
+  );
+
+  if (!result.length) return [];
+
+  const columns = result[0].columns;
+  return result[0].values.map((row) => {
+    const img: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      img[col] = row[i];
+    });
+    return img as unknown as Image;
+  });
+}
+
+export async function deleteImage(id: string): Promise<void> {
+  const database = await loadDatabase();
+  database.run("DELETE FROM images WHERE id = ?", [id]);
+  await saveDatabase();
+}
+
+export async function deleteImagesByQuestion(questionId: string): Promise<void> {
+  const database = await loadDatabase();
+  database.run("DELETE FROM images WHERE question_id = ?", [questionId]);
+  await saveDatabase();
 }
 
 // Clear all data

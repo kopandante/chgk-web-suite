@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { href: "/packages", label: "Мои пакеты", icon: Package },
+  { href: "/", label: "Мои пакеты", icon: Package },
   { href: "/settings", label: "Настройки", icon: Settings },
 ];
 
@@ -40,7 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SidebarMenu>
                 {navItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)}>
+                    <SidebarMenuButton asChild isActive={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)}>
                       <Link href={item.href}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.label}</span>

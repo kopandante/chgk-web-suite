@@ -20,9 +20,9 @@ export default function NewPackagePage() {
       setError(null);
 
       try {
-        const { structure } = await parseDocx(file);
+        const { structure, images } = await parseDocx(file);
         const title = file.name.replace(/\.docx$/i, "");
-        const packageId = await importParsedPackage(title, structure);
+        const packageId = await importParsedPackage(title, structure, images);
         return packageId;
       } finally {
         setIsProcessing(false);
@@ -30,7 +30,7 @@ export default function NewPackagePage() {
     },
     onSuccess: (packageId) => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push(`/packages/${packageId}`);
+      router.push(`/${packageId}`);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Ошибка при импорте файла");
@@ -44,7 +44,7 @@ export default function NewPackagePage() {
     },
     onSuccess: (packageId) => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push(`/packages/${packageId}/edit`);
+      router.push(`/${packageId}/edit`);
     },
   });
 

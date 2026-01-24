@@ -1,15 +1,15 @@
 // Parser tests
 import { describe, expect, test, beforeAll } from "bun:test";
 import { readFileSync, readdirSync } from "fs";
-import { join } from "path";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import mammoth from "mammoth";
-import { ChgkParser } from "../lib/parser/index";
+import { basename, join } from "path";
+import { ChgkParser, parseTxt } from "../lib/parser/index";
 import { compose4s } from "../lib/parser/compose-4s";
+import { parseDocx } from "../lib/parser/docx";
+import { registerDom } from "./setup";
 
 // Register DOM globals before tests
 beforeAll(() => {
-  GlobalRegistrator.register();
+  registerDom();
 });
 
 const FIXTURES_DIR = join(import.meta.dir, "fixtures");
@@ -31,12 +31,6 @@ function normalize(text: string): string {
     .trim();
 }
 
-// Parse DOCX file to text using mammoth
-async function parseDocxToText(filePath: string): Promise<string> {
-  const result = await mammoth.extractRawText({ path: filePath });
-  return result.value;
-}
-
 describe("Parser canonical tests", () => {
   // Test TXT files
   const txtCanonFiles = canonFiles.filter(
@@ -53,8 +47,8 @@ describe("Parser canonical tests", () => {
       const inputContent = readFileSync(inputPath, "utf-8");
       const expectedOutput = readFileSync(canonPath, "utf-8");
 
-      const parser = new ChgkParser();
-      const parsed = parser.parse(inputContent);
+      // Use parseTxt which escapes underscores like chgksuite
+      const parsed = parseTxt(inputContent);
       const output = compose4s(parsed);
 
       expect(normalize(output)).toBe(normalize(expectedOutput));
@@ -75,13 +69,10 @@ describe("Parser canonical tests", () => {
 
       const expectedOutput = readFileSync(canonPath, "utf-8");
 
-      // Extract text from DOCX
-      const text = await parseDocxToText(inputPath);
-
-      // Parse
-      const parser = new ChgkParser();
-      const parsed = parser.parse(text);
-      const output = compose4s(parsed);
+      // Parse DOCX with proper image handling and underscore escaping
+      const buffer = readFileSync(inputPath);
+      const { structure } = await parseDocx(buffer, undefined, "", basename(inputPath));
+      const output = compose4s(structure);
 
       expect(normalize(output)).toBe(normalize(expectedOutput));
     });
