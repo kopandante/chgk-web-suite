@@ -134,7 +134,7 @@
 ## Структура проекта
 
 ```
-chgk-web/
+chgk-web-suite/
 ├── app/                          # Next.js App Router
 │   ├── (dashboard)/              # Защищенные страницы
 │   │   ├── layout.tsx            # Layout с сайдбаром
