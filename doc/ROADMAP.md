@@ -60,7 +60,7 @@
 | DOCX | Done | - |
 | PPTX | Done | - |
 | LaTeX/PDF | - | Low |
-| Telegram | - | Medium |
+| Telegram | Done | - |
 | LiveJournal | - | Low |
 | Reddit (Markdown) | - | Low |
 | db.chgk.info | - | Medium |
@@ -101,7 +101,7 @@
 
 | Интеграция | Статус | Приоритет |
 |------------|--------|-----------|
-| Trello download | - | Medium |
+| Trello download | Done | - |
 | Trello upload | - | Low |
 | rating.chgk.net (статистика) | - | Low |
 | db.chgk.info (парсинг) | - | Low |
@@ -149,9 +149,10 @@
    - Спойлеры для ответов (`<tg-spoiler>`)
    - HTML форматирование
 
-4. **Trello интеграция**
-   - Скачивание карточек с доски
-   - OAuth авторизация
+4. ~~**Trello интеграция**~~ DONE
+   - Авторизация через браузер (popup)
+   - Импорт карточек как вопросов
+   - Списки как туры
 
 5. **Экспорт db.chgk.info**
    - Формат для загрузки на db.chgk.info
