@@ -147,15 +147,16 @@ export default function EditPackagePage() {
     field: keyof QuestionFormData,
     value: string | number | null,
   ) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, [field]: value } : q)),
-    );
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
     setHasChanges(true);
   };
 
   const addQuestion = () => {
     const newId = `new-${Date.now()}`;
-    const maxNumber = Math.max(0, ...questions.filter((q) => !q.isDeleted).map((q) => q.number || 0));
+    const maxNumber = Math.max(
+      0,
+      ...questions.filter((q) => !q.isDeleted).map((q) => q.number || 0),
+    );
     setQuestions((prev) => [
       ...prev,
       {
@@ -177,9 +178,7 @@ export default function EditPackagePage() {
   };
 
   const removeQuestion = (id: string) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, isDeleted: true } : q)),
-    );
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, isDeleted: true } : q)));
     setHasChanges(true);
   };
 
@@ -304,9 +303,7 @@ export default function EditPackagePage() {
                 onClick={() => toggleExpanded(q.id)}
               >
                 <GripVertical className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium text-sm">
-                  Вопрос {q.number ?? idx + 1}
-                </span>
+                <span className="font-medium text-sm">Вопрос {q.number ?? idx + 1}</span>
                 <span className="text-sm text-muted-foreground truncate flex-1">
                   {q.question.slice(0, 80)}
                   {q.question.length > 80 ? "..." : ""}
@@ -383,9 +380,7 @@ export default function EditPackagePage() {
                     <span className="text-sm font-medium">Раздатка</span>
                     <textarea
                       value={q.handout ?? ""}
-                      onChange={(e) =>
-                        updateQuestionField(q.id, "handout", e.target.value || null)
-                      }
+                      onChange={(e) => updateQuestionField(q.id, "handout", e.target.value || null)}
                       rows={2}
                       className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     />
@@ -406,9 +401,7 @@ export default function EditPackagePage() {
                     <input
                       type="text"
                       value={q.answer ?? ""}
-                      onChange={(e) =>
-                        updateQuestionField(q.id, "answer", e.target.value || null)
-                      }
+                      onChange={(e) => updateQuestionField(q.id, "answer", e.target.value || null)}
                       className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     />
                   </label>
@@ -442,9 +435,7 @@ export default function EditPackagePage() {
                     <span className="text-sm font-medium">Комментарий</span>
                     <textarea
                       value={q.comment ?? ""}
-                      onChange={(e) =>
-                        updateQuestionField(q.id, "comment", e.target.value || null)
-                      }
+                      onChange={(e) => updateQuestionField(q.id, "comment", e.target.value || null)}
                       rows={2}
                       className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     />
@@ -454,9 +445,7 @@ export default function EditPackagePage() {
                     <span className="text-sm font-medium">Источник</span>
                     <textarea
                       value={q.source ?? ""}
-                      onChange={(e) =>
-                        updateQuestionField(q.id, "source", e.target.value || null)
-                      }
+                      onChange={(e) => updateQuestionField(q.id, "source", e.target.value || null)}
                       rows={2}
                       className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     />

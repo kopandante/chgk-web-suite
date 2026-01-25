@@ -22,9 +22,7 @@ function parseFormatting(text: string): React.ReactNode[] {
     // Add text before the match
     if (match.index > lastIndex) {
       result.push(
-        <Fragment key={`plain-${keyCounter++}`}>
-          {text.slice(lastIndex, match.index)}
-        </Fragment>,
+        <Fragment key={`plain-${keyCounter++}`}>{text.slice(lastIndex, match.index)}</Fragment>,
       );
     }
 
@@ -41,13 +39,9 @@ function parseFormatting(text: string): React.ReactNode[] {
         </span>,
       );
     } else if (marker === "__") {
-      result.push(
-        <strong key={`bold-${keyCounter++}`}>{children}</strong>,
-      );
+      result.push(<strong key={`bold-${keyCounter++}`}>{children}</strong>);
     } else if (marker === "_") {
-      result.push(
-        <em key={`italic-${keyCounter++}`}>{children}</em>,
-      );
+      result.push(<em key={`italic-${keyCounter++}`}>{children}</em>);
     } else if (marker === "~") {
       result.push(
         <span key={`strike-${keyCounter++}`} className="line-through">
@@ -61,9 +55,7 @@ function parseFormatting(text: string): React.ReactNode[] {
 
   // Add remaining text
   if (lastIndex < text.length) {
-    result.push(
-      <Fragment key={`plain-${keyCounter++}`}>{text.slice(lastIndex)}</Fragment>,
-    );
+    result.push(<Fragment key={`plain-${keyCounter++}`}>{text.slice(lastIndex)}</Fragment>);
   }
 
   return result.length > 0 ? result : [<Fragment key="empty">{text}</Fragment>];
@@ -75,7 +67,6 @@ function parseFormatting(text: string): React.ReactNode[] {
 function restoreUnderscores(text: string): string {
   return text.replace(/\\_/g, "\u0000UNDERSCORE\u0000");
 }
-
 
 /**
  * Parse text and convert URLs to clickable links, images to QuestionImage components

@@ -51,39 +51,38 @@ export async function parseDocxToHtml(
     mammothInput = { arrayBuffer: file };
   }
 
-  const result = await mammoth.convertToHtml(
-    mammothInput,
-    {
-      convertImage: mammoth.images.imgElement(async (image) => {
-        const imageData = await image.read("base64");
-        const contentType = image.contentType;
-        const extension = getExtensionFromContentType(contentType);
+  const result = await mammoth.convertToHtml(mammothInput, {
+    convertImage: mammoth.images.imgElement(async (image) => {
+      const imageData = await image.read("base64");
+      const contentType = image.contentType;
+      const extension = getExtensionFromContentType(contentType);
 
-        // Generate sequential image ID per extension like chgksuite: prefix_001.ext
-        const counter = (extensionCounters.get(extension) || 0) + 1;
-        extensionCounters.set(extension, counter);
-        const id = prefix ? `${prefix}_${String(counter).padStart(3, "0")}` : `img_${String(counter).padStart(3, "0")}`;
+      // Generate sequential image ID per extension like chgksuite: prefix_001.ext
+      const counter = (extensionCounters.get(extension) || 0) + 1;
+      extensionCounters.set(extension, counter);
+      const id = prefix
+        ? `${prefix}_${String(counter).padStart(3, "0")}`
+        : `img_${String(counter).padStart(3, "0")}`;
 
-        // Convert base64 to ArrayBuffer
-        const binaryString = atob(imageData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+      // Convert base64 to ArrayBuffer
+      const binaryString = atob(imageData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
-        images.push({
-          id,
-          data: bytes.buffer,
-          contentType,
-          extension,
-        });
+      images.push({
+        id,
+        data: bytes.buffer,
+        contentType,
+        extension,
+      });
 
-        imageReplacements.set(`${id}.${extension}`, `(img ${id}.${extension})`);
+      imageReplacements.set(`${id}.${extension}`, `(img ${id}.${extension})`);
 
-        return { src: `IMGPATH(${id}.${extension})` };
-      }),
-    },
-  );
+      return { src: `IMGPATH(${id}.${extension})` };
+    }),
+  });
 
   let html = result.value;
 
@@ -280,7 +279,6 @@ function htmlToText(html: string, preserveFormatting = false): string {
   // Normalize Unicode to NFC (precomposed form)
   result = result.normalize("NFC");
 
-
   // Cleanup
   result = result
     .replace(/\\-/g, "")
@@ -305,10 +303,7 @@ function htmlToText(html: string, preserveFormatting = false): string {
 
   // Move opening bracket before "Раздаточный материал:" for proper handout formatting
   // Pattern: "Раздаточный материал:\n[" -> "[Раздаточный материал:\n"
-  result = result.replace(
-    /([Рр]аздаточный материал[:\s]*)\n\s*\[/gi,
-    "[$1\n",
-  );
+  result = result.replace(/([Рр]аздаточный материал[:\s]*)\n\s*\[/gi, "[$1\n");
 
   return result;
 }
