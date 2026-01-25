@@ -8,7 +8,6 @@ import {
   Loader2,
   Send,
   ShieldCheck,
-  Trash2,
   Trello,
   Unlink,
 } from "lucide-react";
@@ -21,7 +20,6 @@ import { testBotConnection } from "@/lib/export/telegram";
 import { openTrelloAuth, testTrelloConnection } from "@/lib/trello/client";
 
 export default function SettingsPage() {
-  const [isClearing, setIsClearing] = useState(false);
   const { isReady } = useEncryption();
 
   // Trello
@@ -66,18 +64,6 @@ export default function SettingsPage() {
       : pendingCode
         ? { status: "pending" as const, ...pendingCode }
         : linkStatus;
-
-  const handleClearData = async () => {
-    if (!confirm("Вы уверены? Все данные будут удалены.")) return;
-    setIsClearing(true);
-    try {
-      const { del } = await import("idb-keyval");
-      await del("chgk-web-db");
-      window.location.reload();
-    } finally {
-      setIsClearing(false);
-    }
-  };
 
   const handleTrelloConnect = async () => {
     if (!trelloReady) {
@@ -301,26 +287,14 @@ export default function SettingsPage() {
           <Database className="h-5 w-5" />
           <h2 className="text-lg font-semibold">Хранилище данных</h2>
         </div>
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 text-sm">
-            <HardDrive className="h-4 w-4 mt-0.5 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Локальное хранилище</p>
-              <p className="text-muted-foreground">
-                Все данные хранятся локально в вашем браузере с использованием SQLite.
-              </p>
-            </div>
-          </div>
-          <div className="pt-4 border-t">
-            <button
-              type="button"
-              onClick={handleClearData}
-              disabled={isClearing}
-              className="inline-flex items-center gap-2 rounded-md border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              {isClearing ? "Удаление..." : "Очистить все данные"}
-            </button>
+        <div className="flex items-start gap-3 text-sm">
+          <HardDrive className="h-4 w-4 mt-0.5 text-muted-foreground" />
+          <div>
+            <p className="font-medium">Облачное хранилище</p>
+            <p className="text-muted-foreground">
+              Данные хранятся в зашифрованном виде на сервере Convex. Ключ шифрования хранится в
+              вашем аккаунте и недоступен серверу.
+            </p>
           </div>
         </div>
       </div>
