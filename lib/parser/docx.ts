@@ -99,7 +99,7 @@ export async function parseDocxToHtml(
   return { html, images };
 }
 
-function htmlToText(html: string): string {
+function htmlToText(html: string, preserveFormatting = false): string {
   // Protect image placeholders from underscore escaping
   // Use non-greedy match to handle filenames with parentheses like (48v)
   const imagePlaceholders: string[] = [];
@@ -122,11 +122,33 @@ function htmlToText(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(text, "text/html");
 
-  // Note: em/strong formatting is NOT preserved by default (matching chgksuite behavior)
-  // chgksuite only adds _text_ markers when --preserve-formatting flag is used
+  // Convert formatting tags to chgksuite format: _italic_, __bold__, ___underline___, ~strike~
+  // Only when preserveFormatting is enabled
+  if (preserveFormatting) {
+    // Process in reverse nesting order to handle nested tags correctly
+    for (const el of doc.querySelectorAll("s, strike, del")) {
+      const content = el.innerHTML;
+      el.outerHTML = `~${content}~`;
+    }
+    for (const el of doc.querySelectorAll("u")) {
+      const content = el.innerHTML;
+      el.outerHTML = `___${content}___`;
+    }
+    for (const el of doc.querySelectorAll("strong, b")) {
+      const content = el.innerHTML;
+      el.outerHTML = `__${content}__`;
+    }
+    for (const el of doc.querySelectorAll("em, i")) {
+      const content = el.innerHTML;
+      el.outerHTML = `_${content}_`;
+    }
+  }
+
+  // Re-parse after formatting conversion to get clean DOM
+  const doc2 = parser.parseFromString(doc.body.innerHTML, "text/html");
 
   // Process links: add URL to text like chgksuite
-  for (const link of doc.querySelectorAll("a")) {
+  for (const link of doc2.querySelectorAll("a")) {
     const href = link.getAttribute("href");
     const linkText = link.textContent || "";
 
@@ -151,17 +173,17 @@ function htmlToText(html: string): string {
   }
 
   // Remove style tags
-  for (const style of doc.querySelectorAll("style")) {
+  for (const style of doc2.querySelectorAll("style")) {
     style.remove();
   }
 
   // Replace br with newlines
-  for (const br of doc.querySelectorAll("br")) {
+  for (const br of doc2.querySelectorAll("br")) {
     br.replaceWith("\n");
   }
 
   // Process paragraphs
-  for (const p of doc.querySelectorAll("p")) {
+  for (const p of doc2.querySelectorAll("p")) {
     const content = p.textContent || "";
     if (!content.startsWith("\n")) {
       p.insertBefore(document.createTextNode("\n"), p.firstChild);
@@ -172,7 +194,7 @@ function htmlToText(html: string): string {
   }
 
   // Process headers
-  for (const h of doc.querySelectorAll("h1, h2, h3, h4")) {
+  for (const h of doc2.querySelectorAll("h1, h2, h3, h4")) {
     const content = h.textContent || "";
     if (!content.startsWith("\n")) {
       h.insertBefore(document.createTextNode("\n"), h.firstChild);
@@ -184,7 +206,7 @@ function htmlToText(html: string): string {
 
   // Process ordered lists
   let olCounter = 0;
-  for (const ol of doc.querySelectorAll("ol")) {
+  for (const ol of doc2.querySelectorAll("ol")) {
     olCounter = 0;
     for (const li of ol.querySelectorAll("li")) {
       olCounter += 1;
@@ -194,13 +216,13 @@ function htmlToText(html: string): string {
   }
 
   // Process unordered lists
-  for (const li of doc.querySelectorAll("ul li")) {
+  for (const li of doc2.querySelectorAll("ul li")) {
     li.insertBefore(document.createTextNode("- "), li.firstChild);
     li.appendChild(document.createTextNode("\n"));
   }
 
   // Process tables - convert to markdown format
-  for (const table of doc.querySelectorAll("table")) {
+  for (const table of doc2.querySelectorAll("table")) {
     const rows = table.querySelectorAll("tr");
     const allRowData: string[][] = [];
 
@@ -253,7 +275,7 @@ function htmlToText(html: string): string {
   }
 
   // Get text content
-  let result = doc.body.textContent || "";
+  let result = doc2.body.textContent || "";
 
   // Normalize Unicode to NFC (precomposed form)
   result = result.normalize("NFC");
@@ -301,7 +323,7 @@ export async function parseDocx(
   const docxFilename = filename || (file instanceof File ? file.name : "");
   const { html, images } = await parseDocxToHtml(file, docxFilename);
 
-  const text = htmlToText(html);
+  const text = htmlToText(html, options?.preserveFormatting);
 
   const parser = new ChgkParser(options, defaultAuthor);
   const structure = parser.parse(text);

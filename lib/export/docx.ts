@@ -51,7 +51,56 @@ function restoreUnderscores(text: string): string {
   return text.replace(/\$\$UNDERSCORE\$\$/g, "_");
 }
 
-// Parse text and create TextRuns
+// Parse formatting markers and return array of runs with styles
+interface FormattedRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+}
+
+function parseFormattingRuns(text: string): FormattedRun[] {
+  const runs: FormattedRun[] = [];
+
+  // Pattern for formatting: ___text___, __text__, _text_, ~text~
+  const formatRegex = /(___|__|_|~)(.+?)\1/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = formatRegex.exec(text)) !== null) {
+    // Add plain text before the match
+    if (match.index > lastIndex) {
+      runs.push({ text: text.slice(lastIndex, match.index) });
+    }
+
+    const marker = match[1];
+    const content = match[2];
+
+    // Note: nested formatting is flattened to the outer style
+    if (marker === "___") {
+      runs.push({ text: content, underline: true });
+    } else if (marker === "__") {
+      runs.push({ text: content, bold: true });
+    } else if (marker === "_") {
+      runs.push({ text: content, italic: true });
+    } else if (marker === "~") {
+      runs.push({ text: content, strike: true });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    runs.push({ text: text.slice(lastIndex) });
+  }
+
+  return runs.length > 0 ? runs : [{ text }];
+}
+
+// Parse text and create TextRuns with formatting support
 function createTextRuns(
   text: string,
   options: Required<DocxExportOptions>,
@@ -65,14 +114,23 @@ function createTextRuns(
     if (i > 0) {
       runs.push(new TextRun({ break: 1 }));
     }
-    runs.push(
-      new TextRun({
-        text: lines[i],
-        font: options.fontFamily,
-        size: options.fontSize * 2, // docx uses half-points
-        color: color,
-      }),
-    );
+
+    // Parse formatting in each line
+    const formattedRuns = parseFormattingRuns(lines[i]);
+    for (const run of formattedRuns) {
+      runs.push(
+        new TextRun({
+          text: run.text,
+          font: options.fontFamily,
+          size: options.fontSize * 2, // docx uses half-points
+          color: color,
+          bold: run.bold,
+          italics: run.italic,
+          underline: run.underline ? {} : undefined,
+          strike: run.strike,
+        }),
+      );
+    }
   }
 
   return runs;

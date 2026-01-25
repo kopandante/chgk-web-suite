@@ -3,45 +3,109 @@
 import { Fragment } from "react";
 import { QuestionImageById } from "./question-image";
 
-// URL regex pattern
-const URL_REGEX = /(https?:\/\/[^\s\n]+)/g;
+/**
+ * Parse formatting markers and return array of styled runs
+ * Supports: _italic_, __bold__, ___underline___, ~strike~
+ */
+function parseFormatting(text: string): React.ReactNode[] {
+  const result: React.ReactNode[] = [];
+  let keyCounter = 0;
 
-// Image placeholder pattern: (img filename.ext) - supports various filename formats
-const IMAGE_PLACEHOLDER_REGEX = /\(img\s+([A-Za-z0-9_()-]+)\.[a-z]+\)/gi;
+  // Pattern for formatting: ___text___, __text__, _text_, ~text~
+  // Order matters: longer patterns first
+  const formatRegex = /(___|__|_|~)(.+?)\1/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = formatRegex.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      result.push(
+        <Fragment key={`plain-${keyCounter++}`}>
+          {text.slice(lastIndex, match.index)}
+        </Fragment>,
+      );
+    }
+
+    const marker = match[1];
+    const content = match[2];
+
+    // Recursively parse nested formatting
+    const children = parseFormatting(content);
+
+    if (marker === "___") {
+      result.push(
+        <span key={`underline-${keyCounter++}`} className="underline">
+          {children}
+        </span>,
+      );
+    } else if (marker === "__") {
+      result.push(
+        <strong key={`bold-${keyCounter++}`}>{children}</strong>,
+      );
+    } else if (marker === "_") {
+      result.push(
+        <em key={`italic-${keyCounter++}`}>{children}</em>,
+      );
+    } else if (marker === "~") {
+      result.push(
+        <span key={`strike-${keyCounter++}`} className="line-through">
+          {children}
+        </span>,
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    result.push(
+      <Fragment key={`plain-${keyCounter++}`}>{text.slice(lastIndex)}</Fragment>,
+    );
+  }
+
+  return result.length > 0 ? result : [<Fragment key="empty">{text}</Fragment>];
+}
 
 /**
- * Restore underscores from escaped format
+ * Restore escaped underscores
  */
 function restoreUnderscores(text: string): string {
-  return text.replace(/\\_/g, "_");
+  return text.replace(/\\_/g, "\u0000UNDERSCORE\u0000");
 }
+
 
 /**
  * Parse text and convert URLs to clickable links, images to QuestionImage components
  */
 function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
-  const restored = restoreUnderscores(text);
-  const result: React.ReactNode[] = [];
+  // First, protect escaped underscores
+  const protected_ = restoreUnderscores(text);
 
-  // Combined pattern for both URLs and images
+  const result: React.ReactNode[] = [];
+  let keyCounter = 0;
+
+  // Combined pattern for URLs and images
   const combinedRegex = /(https?:\/\/[^\s\n]+)|\(img\s+([A-Za-z0-9_()-]+)\.[a-z]+\)/gi;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = combinedRegex.exec(restored)) !== null) {
-    // Add text before the match
+  while ((match = combinedRegex.exec(protected_)) !== null) {
+    // Add text before the match (with formatting)
     if (match.index > lastIndex) {
-      result.push(
-        <Fragment key={`text-${lastIndex}`}>{restored.slice(lastIndex, match.index)}</Fragment>,
-      );
+      const segment = protected_.slice(lastIndex, match.index);
+      const formatted = parseFormatting(segment.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+      result.push(<Fragment key={`seg-${keyCounter++}`}>{formatted}</Fragment>);
     }
 
     if (match[1]) {
       // URL match
       result.push(
         <a
-          key={`url-${match.index}`}
+          key={`url-${keyCounter++}`}
           href={match[1]}
           target="_blank"
           rel="noopener noreferrer"
@@ -54,7 +118,7 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
       // Image placeholder match
       result.push(
         <QuestionImageById
-          key={`img-${match.index}`}
+          key={`img-${keyCounter++}`}
           imageId={match[2]}
           className="my-2 max-w-md"
         />,
@@ -64,12 +128,19 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text after last match
-  if (lastIndex < restored.length) {
-    result.push(<Fragment key={`text-${lastIndex}`}>{restored.slice(lastIndex)}</Fragment>);
+  // Add remaining text (with formatting)
+  if (lastIndex < protected_.length) {
+    const segment = protected_.slice(lastIndex);
+    const formatted = parseFormatting(segment.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+    result.push(<Fragment key={`seg-${keyCounter++}`}>{formatted}</Fragment>);
   }
 
-  return result.length > 0 ? result : [<Fragment key="empty">{restored}</Fragment>];
+  if (result.length === 0) {
+    const formatted = parseFormatting(protected_.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+    return formatted;
+  }
+
+  return result;
 }
 
 interface FormatTextProps {
@@ -78,7 +149,7 @@ interface FormatTextProps {
 }
 
 /**
- * Format text: restore underscores, make URLs clickable, render images
+ * Format text: apply formatting (_italic_, __bold__, etc.), make URLs clickable, render images
  */
 export function FormatText({ text, className }: FormatTextProps) {
   if (!text) return null;
