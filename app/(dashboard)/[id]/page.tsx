@@ -122,7 +122,7 @@ export default function PackagePage() {
     mutationFn: () => deletePackage(packageId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push("/");
+      router.push("/packages");
     },
   });
 
@@ -158,7 +158,7 @@ export default function PackagePage() {
   return (
     <div className="space-y-6">
       <Link
-        href="/"
+        href="/packages"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />

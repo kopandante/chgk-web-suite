@@ -24,7 +24,7 @@ import {
 import { useEncryption } from "@/hooks/use-encryption";
 
 const navItems = [
-  { href: "/", label: "Мои пакеты", icon: Package },
+  { href: "/packages", label: "Мои пакеты", icon: Package },
   { href: "/settings", label: "Настройки", icon: Settings },
   { href: "/help", label: "Справка", icon: HelpCircle },
 ];
@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4">
-          <Link href="/" className="text-xl font-bold">
+          <Link href="/packages" className="text-xl font-bold">
             CHGK Web Suite
           </Link>
         </SidebarHeader>
@@ -51,9 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
-                      isActive={
-                        item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
-                      }
+                      isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
                     >
                       <Link href={item.href}>
                         <item.icon className="h-4 w-4" />
