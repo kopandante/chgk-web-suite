@@ -1,16 +1,6 @@
 "use client";
 
-import {
-  Copy,
-  Database,
-  HardDrive,
-  Link2,
-  Loader2,
-  Send,
-  ShieldCheck,
-  Trello,
-  Unlink,
-} from "lucide-react";
+import { Copy, Link2, Loader2, Send, ShieldCheck, Trello, Unlink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useEncryption } from "@/hooks/use-encryption";
@@ -279,36 +269,6 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
-      </div>
-
-      {/* Storage */}
-      <div className="rounded-lg border p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <Database className="h-5 w-5" />
-          <h2 className="text-lg font-semibold">Хранилище данных</h2>
-        </div>
-        <div className="flex items-start gap-3 text-sm">
-          <HardDrive className="h-4 w-4 mt-0.5 text-muted-foreground" />
-          <div>
-            <p className="font-medium">Облачное хранилище</p>
-            <p className="text-muted-foreground">
-              Данные хранятся в зашифрованном виде на сервере Convex. Ключ шифрования хранится в
-              вашем аккаунте и недоступен серверу.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* About */}
-      <div className="rounded-lg border p-6 space-y-4">
-        <h2 className="text-lg font-semibold">О приложении</h2>
-        <div className="text-sm text-muted-foreground space-y-2">
-          <p>CHGK Web Suite — приложение для работы с пакетами вопросов «Что? Где? Когда?».</p>
-          <p>
-            Позволяет импортировать пакеты из DOCX, редактировать вопросы и экспортировать в
-            различные форматы.
-          </p>
-        </div>
       </div>
     </div>
   );
