@@ -1,14 +1,14 @@
-# Roadmap: CHGK-Web
+# Roadmap: CHGK Web Suite
 
 ## Текущий статус
 
 Проект использует:
-- Локальную БД (sql.js + IndexedDB) для пакетов/вопросов
-- Convex для привязки Telegram каналов (real-time)
-- Clerk для авторизации
+- Convex для хранения зашифрованных данных (пакеты, вопросы, изображения)
+- Clerk для авторизации и хранения ключа шифрования
 - Telegram Bot API для экспорта в каналы
+- E2E шифрование (AES-256-GCM, ключ в Clerk unsafeMetadata)
 
-Все интеграции настроены и работают. E2E шифрование пока не реализовано.
+Все интеграции настроены и работают.
 
 ### Реализовано
 
@@ -49,7 +49,7 @@
 | Функция | Статус | Приоритет |
 |---------|--------|-----------|
 | Парсинг DOCX | Done | - |
-| Парсинг TXT | - | Low |
+| Парсинг TXT | Done | - |
 | Поля: question, answer, zachet, nezachet | Done | - |
 | Поля: comment, source, author, handout | Done | - |
 | Поля: number, date, editor | Done | - |
@@ -80,9 +80,9 @@
 | LaTeX/PDF | - | Low |
 | Telegram | Done | - |
 | LiveJournal | - | Low |
-| Reddit (Markdown) | - | Low |
+| Reddit (Markdown) | Done | - |
 | db.chgk.info | Done | - |
-| OpenQuiz (JSON) | - | Low |
+| OpenQuiz (JSON) | Done | - |
 
 ### 4. Экспорт DOCX - детали
 
@@ -91,10 +91,10 @@
 | Базовый экспорт | Вопросы + ответы | Done |
 | Спойлеры whiten | Белый текст | Done |
 | Спойлеры pagebreak | На новой странице | Done |
-| Спойлеры dots | Точки вместо ответа | - |
+| Спойлеры dots | Точки вместо ответа | Done |
 | Screen mode | Версия для экрана + ведущего | - |
 | Без ответов (noanswers) | Только вопросы | Done |
-| Рандомизация | Перемешать вопросы | - |
+| Рандомизация | Перемешать вопросы | Done |
 | Кастомный шаблон | Свой docx template | - |
 | Выбор шрифта | font_face | Done |
 
@@ -181,13 +181,13 @@
 
 ### Low Priority
 
-6. **Парсинг TXT**
+6. ~~**Парсинг TXT**~~ DONE
 7. **LaTeX/PDF экспорт**
-8. **Рандомизация вопросов**
+8. ~~**Рандомизация вопросов**~~ DONE
 9. **Раздатки (handouts)**
-10. ~~**Авторизация Clerk + Convex**~~ DONE (для Telegram каналов)
-11. **E2E шифрование пакетов**
-12. **Синхронизация пакетов через Convex**
+10. ~~**Авторизация Clerk + Convex**~~ DONE
+11. ~~**E2E шифрование пакетов**~~ DONE (ключ в Clerk metadata)
+12. ~~**Синхронизация пакетов через Convex**~~ DONE
 
 ---
 
