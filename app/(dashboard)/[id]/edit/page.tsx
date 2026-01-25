@@ -297,24 +297,23 @@ export default function EditPackagePage() {
           {visibleQuestions.map((q, idx) => (
             <div key={q.id} className="rounded-lg border">
               {/* Question header */}
-              <button
-                type="button"
-                className="flex items-center gap-2 p-3 w-full text-left cursor-pointer hover:bg-muted/50"
-                onClick={() => toggleExpanded(q.id)}
-              >
-                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium text-sm">Вопрос {q.number ?? idx + 1}</span>
-                <span className="text-sm text-muted-foreground truncate flex-1">
-                  {q.question.slice(0, 80)}
-                  {q.question.length > 80 ? "..." : ""}
-                </span>
+              <div className="flex items-center gap-2 p-3 w-full hover:bg-muted/50">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(q.id)}
+                  className="flex items-center gap-2 flex-1 text-left cursor-pointer"
+                >
+                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm">Вопрос {q.number ?? idx + 1}</span>
+                  <span className="text-sm text-muted-foreground truncate flex-1">
+                    {q.question.slice(0, 80)}
+                    {q.question.length > 80 ? "..." : ""}
+                  </span>
+                </button>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      moveQuestion(q.id, "up");
-                    }}
+                    onClick={() => moveQuestion(q.id, "up")}
                     disabled={idx === 0}
                     className="p-1 hover:bg-muted rounded disabled:opacity-30"
                   >
@@ -322,10 +321,7 @@ export default function EditPackagePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      moveQuestion(q.id, "down");
-                    }}
+                    onClick={() => moveQuestion(q.id, "down")}
                     disabled={idx === visibleQuestions.length - 1}
                     className="p-1 hover:bg-muted rounded disabled:opacity-30"
                   >
@@ -333,16 +329,13 @@ export default function EditPackagePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeQuestion(q.id);
-                    }}
+                    onClick={() => removeQuestion(q.id)}
                     className="p-1 hover:bg-destructive/10 text-destructive rounded"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-              </button>
+              </div>
 
               {/* Question form */}
               {expandedQuestions.has(q.id) && (
