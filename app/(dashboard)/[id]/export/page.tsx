@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileDown, FileText, Loader2, Presentation, Send } from "lucide-react";
+import { Check, FileDown, FileText, Loader2, Presentation, Send, X } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   getImagesByPackage,
@@ -13,6 +13,11 @@ import {
 } from "@/lib/db/client";
 import { type DocxExportOptions, downloadBlob, exportToDocx } from "@/lib/export/docx";
 import { exportToPptx, type PptxExportOptions } from "@/lib/export/pptx";
+import {
+  exportToTelegram,
+  type TelegramExportOptions,
+  testBotConnection,
+} from "@/lib/export/telegram";
 import type { ParsedStructure } from "@/lib/parser";
 import { compose4s } from "@/lib/parser/docx";
 
@@ -36,6 +41,40 @@ export default function ExportPackagePage() {
     separateAnswerSlides: true,
     includeImages: true,
   });
+  const [telegramOptions, setTelegramOptions] = useState({
+    botToken: "",
+    channelId: "",
+    useSpoilers: true,
+    includeZachet: true,
+    includeComment: true,
+    includeSource: true,
+    includeAuthor: true,
+    includeHandout: true,
+    postDelay: 3000,
+  });
+  const [telegramProgress, setTelegramProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const [botStatus, setBotStatus] = useState<{
+    tested: boolean;
+    ok: boolean;
+    name?: string;
+    error?: string;
+  }>({ tested: false, ok: false });
+
+  // Load saved Telegram settings from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("telegram_settings");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setTelegramOptions((prev) => ({ ...prev, ...parsed }));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
 
   const { data: pkg } = useQuery({
     queryKey: ["package", packageId],
@@ -159,6 +198,63 @@ export default function ExportPackagePage() {
     },
   });
 
+  const testBotMutation = useMutation({
+    mutationFn: async () => {
+      const result = await testBotConnection(telegramOptions.botToken);
+      if (!result.ok) {
+        throw new Error(result.error || "Connection failed");
+      }
+      return result;
+    },
+    onSuccess: (result) => {
+      setBotStatus({ tested: true, ok: true, name: result.botName });
+      // Save settings on successful test
+      localStorage.setItem(
+        "telegram_settings",
+        JSON.stringify({
+          botToken: telegramOptions.botToken,
+          channelId: telegramOptions.channelId,
+        }),
+      );
+      toast.success(`Бот @${result.botName} подключен`);
+    },
+    onError: (err) => {
+      setBotStatus({
+        tested: true,
+        ok: false,
+        error: err instanceof Error ? err.message : "Error",
+      });
+      toast.error("Ошибка подключения к боту");
+    },
+  });
+
+  const exportTelegramMutation = useMutation({
+    mutationFn: async () => {
+      if (!questions) {
+        throw new Error("Questions not loaded");
+      }
+      setTelegramProgress({ current: 0, total: questions.length });
+      const result = await exportToTelegram(
+        questions,
+        telegramOptions as TelegramExportOptions,
+        (current, total) => setTelegramProgress({ current, total }),
+      );
+      setTelegramProgress(null);
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        toast.warning(`Отправлено: ${result.success}, ошибок: ${result.failed}`);
+      } else {
+        toast.success(`Все ${result.success} вопросов отправлены`);
+      }
+    },
+    onError: (err) => {
+      setTelegramProgress(null);
+      toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
+    },
+  });
+
   const exportOptions = [
     {
       id: "docx" as const,
@@ -177,9 +273,9 @@ export default function ExportPackagePage() {
     {
       id: "telegram" as const,
       name: "Telegram",
-      description: "Формат для Telegram",
+      description: "Публикация в канал",
       icon: Send,
-      available: false,
+      available: true,
     },
     {
       id: "4s" as const,
@@ -195,6 +291,8 @@ export default function ExportPackagePage() {
       setSelectedFormat("docx");
     } else if (format === "pptx") {
       setSelectedFormat("pptx");
+    } else if (format === "telegram") {
+      setSelectedFormat("telegram");
     } else if (format === "4s") {
       export4sMutation.mutate();
     } else {
@@ -203,7 +301,10 @@ export default function ExportPackagePage() {
   };
 
   const isExporting =
-    exportDocxMutation.isPending || export4sMutation.isPending || exportPptxMutation.isPending;
+    exportDocxMutation.isPending ||
+    export4sMutation.isPending ||
+    exportPptxMutation.isPending ||
+    exportTelegramMutation.isPending;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -261,6 +362,174 @@ export default function ExportPackagePage() {
                 </span>
               ) : (
                 "Экспортировать в PPTX"
+              )}
+            </button>
+          </div>
+        </div>
+      ) : selectedFormat === "telegram" ? (
+        <div className="space-y-6">
+          <button
+            type="button"
+            onClick={() => setSelectedFormat(null)}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Назад к выбору формата
+          </button>
+
+          <div className="rounded-lg border p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Настройки Telegram</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Bot Token</label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="password"
+                    value={telegramOptions.botToken}
+                    onChange={(e) => {
+                      setTelegramOptions((prev) => ({
+                        ...prev,
+                        botToken: e.target.value,
+                      }));
+                      setBotStatus({ tested: false, ok: false });
+                    }}
+                    placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                    className="flex-1 rounded-md border px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => testBotMutation.mutate()}
+                    disabled={!telegramOptions.botToken || testBotMutation.isPending}
+                    className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                  >
+                    {testBotMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : botStatus.tested && botStatus.ok ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : botStatus.tested && !botStatus.ok ? (
+                      <X className="h-4 w-4 text-red-600" />
+                    ) : (
+                      "Проверить"
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Получите токен у @BotFather в Telegram
+                </p>
+                {botStatus.tested && botStatus.ok && botStatus.name && (
+                  <p className="mt-1 text-xs text-green-600">Подключен: @{botStatus.name}</p>
+                )}
+                {botStatus.tested && !botStatus.ok && botStatus.error && (
+                  <p className="mt-1 text-xs text-red-600">{botStatus.error}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">ID канала</label>
+                <input
+                  type="text"
+                  value={telegramOptions.channelId}
+                  onChange={(e) =>
+                    setTelegramOptions((prev) => ({
+                      ...prev,
+                      channelId: e.target.value,
+                    }))
+                  }
+                  placeholder="@channel или -1001234567890"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Бот должен быть администратором канала
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Задержка между постами</label>
+                <select
+                  value={telegramOptions.postDelay}
+                  onChange={(e) =>
+                    setTelegramOptions((prev) => ({
+                      ...prev,
+                      postDelay: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value={1000}>1 секунда</option>
+                  <option value={3000}>3 секунды</option>
+                  <option value={5000}>5 секунд</option>
+                  <option value={10000}>10 секунд</option>
+                  <option value={30000}>30 секунд</option>
+                  <option value={60000}>1 минута</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Опции</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: "useSpoilers", label: "Спойлеры для ответов" },
+                    { key: "includeZachet", label: "Зачет" },
+                    { key: "includeComment", label: "Комментарии" },
+                    { key: "includeSource", label: "Источники" },
+                    { key: "includeAuthor", label: "Авторы" },
+                    { key: "includeHandout", label: "Раздатки" },
+                  ].map((option) => (
+                    <label key={option.key} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={
+                          telegramOptions[option.key as keyof typeof telegramOptions] as boolean
+                        }
+                        onChange={(e) =>
+                          setTelegramOptions((prev) => ({
+                            ...prev,
+                            [option.key]: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-input"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {telegramProgress && (
+              <div className="space-y-2">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{
+                      width: `${(telegramProgress.current / telegramProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  Отправлено {telegramProgress.current} из {telegramProgress.total}
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => exportTelegramMutation.mutate()}
+              disabled={
+                exportTelegramMutation.isPending ||
+                !telegramOptions.botToken ||
+                !telegramOptions.channelId ||
+                !questions?.length
+              }
+              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {exportTelegramMutation.isPending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Отправка...
+                </span>
+              ) : (
+                `Отправить ${questions?.length || 0} вопросов в Telegram`
               )}
             </button>
           </div>
