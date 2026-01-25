@@ -2,8 +2,9 @@
 // Converts questions to Telegram HTML format with spoilers
 
 import type { Question } from "@/lib/db/schema";
+import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
-export interface TelegramExportOptions {
+export interface TelegramExportOptions extends RandomizeOptions {
   // Channel ID or @username
   channelId: string;
   // Use spoilers for answers
@@ -192,19 +193,23 @@ export async function testBotConnection(): Promise<{
 
 /**
  * Export questions to Telegram channel
+ * Stops on first error
  */
 export async function exportToTelegram(
   questions: Question[],
   options: TelegramExportOptions,
   onProgress?: (current: number, total: number) => void,
-): Promise<{ success: number; failed: number; errors: string[] }> {
+): Promise<{ success: number; failed: number; errors: string[]; stopped: boolean }> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const errors: string[] = [];
   let success = 0;
-  let failed = 0;
+  let stopped = false;
 
-  for (let i = 0; i < questions.length; i++) {
-    const question = questions[i];
+  // Apply randomization if enabled
+  const processedQuestions = maybeShuffleQuestions(questions, options);
+
+  for (let i = 0; i < processedQuestions.length; i++) {
+    const question = processedQuestions[i];
     const text = formatQuestionForTelegram(question, i, opts);
 
     const result = await sendToTelegram(opts.channelId, text);
@@ -212,19 +217,21 @@ export async function exportToTelegram(
     if (result.ok) {
       success++;
     } else {
-      failed++;
       errors.push(`Вопрос ${question.number ?? i + 1}: ${result.error}`);
+      stopped = true;
+      onProgress?.(i + 1, processedQuestions.length);
+      break; // Останавливаемся при первой ошибке
     }
 
-    onProgress?.(i + 1, questions.length);
+    onProgress?.(i + 1, processedQuestions.length);
 
     // Delay between posts to avoid rate limiting
-    if (i < questions.length - 1 && opts.postDelay > 0) {
+    if (i < processedQuestions.length - 1 && opts.postDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
     }
   }
 
-  return { success, failed, errors };
+  return { success, failed: stopped ? 1 : 0, errors, stopped };
 }
 
 /**

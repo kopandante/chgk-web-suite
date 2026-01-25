@@ -1,27 +1,40 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, FileDown, FileText, Loader2, Presentation, Send, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Braces,
+  Check,
+  Database,
+  FileDown,
+  FileText,
+  Loader2,
+  MessageSquare,
+  Presentation,
+  Send,
+  Settings,
+} from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useTelegramChannels } from "@/hooks/use-telegram-channel";
 import {
   getImagesByPackage,
   getPackage,
   getQuestionsByPackage,
   getToursByPackage,
 } from "@/lib/db/client";
+import { downloadChgkDbFile, exportToChgkDb } from "@/lib/export/chgk-db";
 import { type DocxExportOptions, downloadBlob, exportToDocx } from "@/lib/export/docx";
+import { downloadOpenQuizFile } from "@/lib/export/openquiz";
 import { exportToPptx, type PptxExportOptions } from "@/lib/export/pptx";
-import {
-  exportToTelegram,
-  type TelegramExportOptions,
-  testBotConnection,
-} from "@/lib/export/telegram";
+import { downloadRedditFile, exportToReddit } from "@/lib/export/reddit";
+import { exportToTelegram, type TelegramExportOptions } from "@/lib/export/telegram";
 import type { ParsedStructure } from "@/lib/parser";
 import { compose4s } from "@/lib/parser/docx";
 
-type ExportFormat = "docx" | "pptx" | "telegram" | "4s";
+type ExportFormat = "docx" | "pptx" | "telegram" | "4s" | "chgk-db" | "openquiz" | "reddit";
 
 export default function ExportPackagePage() {
   const params = useParams();
@@ -42,7 +55,6 @@ export default function ExportPackagePage() {
     includeImages: true,
   });
   const [telegramOptions, setTelegramOptions] = useState({
-    channelId: "",
     useSpoilers: true,
     includeZachet: true,
     includeComment: true,
@@ -51,24 +63,37 @@ export default function ExportPackagePage() {
     includeHandout: true,
     postDelay: 3000,
   });
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [telegramProgress, setTelegramProgress] = useState<{
     current: number;
     total: number;
   } | null>(null);
-  const [botStatus, setBotStatus] = useState<{
-    tested: boolean;
-    ok: boolean;
-    name?: string;
-    error?: string;
-  }>({ tested: false, ok: false });
 
-  // Load saved Telegram channel from localStorage
+  // Convex real-time channels state
+  const { channels } = useTelegramChannels();
+
+  // Выбранный канал
+  const selectedChannel = channels.find((c) => c.channelId === selectedChannelId) ?? channels[0];
+
+  // Автовыбор первого канала
   useEffect(() => {
-    const saved = localStorage.getItem("telegram_channel");
-    if (saved) {
-      setTelegramOptions((prev) => ({ ...prev, channelId: saved }));
+    if (channels.length > 0 && !selectedChannelId) {
+      setSelectedChannelId(channels[0].channelId);
     }
-  }, []);
+  }, [channels, selectedChannelId]);
+
+  // Предупреждение при уходе во время экспорта в Telegram
+  useEffect(() => {
+    if (!telegramProgress) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      return "Отправка в Telegram будет прервана. Вы уверены?";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [telegramProgress]);
 
   const { data: pkg } = useQuery({
     queryKey: ["package", packageId],
@@ -192,53 +217,85 @@ export default function ExportPackagePage() {
     },
   });
 
-  const testBotMutation = useMutation({
-    mutationFn: async () => {
-      const result = await testBotConnection();
-      if (!result.ok) {
-        throw new Error(result.error || "Connection failed");
-      }
-      return result;
-    },
-    onSuccess: (result) => {
-      setBotStatus({ tested: true, ok: true, name: result.botName });
-      // Save channel setting
-      localStorage.setItem("telegram_channel", telegramOptions.channelId);
-      toast.success(`Бот @${result.botName} подключен`);
-    },
-    onError: (err) => {
-      setBotStatus({
-        tested: true,
-        ok: false,
-        error: err instanceof Error ? err.message : "Error",
-      });
-      toast.error("Ошибка подключения к боту");
-    },
-  });
-
   const exportTelegramMutation = useMutation({
     mutationFn: async () => {
       if (!questions) {
         throw new Error("Questions not loaded");
       }
+      if (!selectedChannel?.channelId) {
+        throw new Error("Channel not selected");
+      }
       setTelegramProgress({ current: 0, total: questions.length });
       const result = await exportToTelegram(
         questions,
-        telegramOptions as TelegramExportOptions,
+        {
+          channelId: selectedChannel.channelId,
+          channelTitle: selectedChannel.channelTitle || "",
+          ...telegramOptions,
+        } as TelegramExportOptions,
         (current, total) => setTelegramProgress({ current, total }),
       );
       setTelegramProgress(null);
       return result;
     },
     onSuccess: (result) => {
-      if (result.failed > 0) {
-        toast.warning(`Отправлено: ${result.success}, ошибок: ${result.failed}`);
+      if (result.stopped) {
+        toast.error(`Остановлено после ${result.success} вопросов. ${result.errors[0]}`);
       } else {
         toast.success(`Все ${result.success} вопросов отправлены`);
       }
     },
     onError: (err) => {
       setTelegramProgress(null);
+      toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
+    },
+  });
+
+  const exportChgkDbMutation = useMutation({
+    mutationFn: async () => {
+      if (!pkg || !questions || !tours) {
+        throw new Error("Data not loaded");
+      }
+      const content = exportToChgkDb(pkg, questions, tours);
+      const filename = `${pkg.title.replace(/[^\w\s-]/g, "")}.txt`;
+      downloadChgkDbFile(content, filename);
+    },
+    onSuccess: () => {
+      toast.success("Файл для db.chgk.info создан");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
+    },
+  });
+
+  const exportOpenQuizMutation = useMutation({
+    mutationFn: async () => {
+      if (!pkg || !questions || !tours) {
+        throw new Error("Data not loaded");
+      }
+      downloadOpenQuizFile(pkg, questions, tours);
+    },
+    onSuccess: () => {
+      toast.success("Файл OpenQuiz JSON создан");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
+    },
+  });
+
+  const exportRedditMutation = useMutation({
+    mutationFn: async () => {
+      if (!pkg || !questions || !tours) {
+        throw new Error("Data not loaded");
+      }
+      const content = exportToReddit(pkg, questions, tours);
+      const filename = `${pkg.title.replace(/[^\w\s-]/g, "")}.md`;
+      downloadRedditFile(content, filename);
+    },
+    onSuccess: () => {
+      toast.success("Файл Reddit Markdown создан");
+    },
+    onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
     },
   });
@@ -272,6 +329,27 @@ export default function ExportPackagePage() {
       icon: FileDown,
       available: true,
     },
+    {
+      id: "chgk-db" as const,
+      name: "db.chgk.info",
+      description: "База вопросов ЧГК",
+      icon: Database,
+      available: true,
+    },
+    {
+      id: "openquiz" as const,
+      name: "OpenQuiz",
+      description: "JSON для OpenQuiz",
+      icon: Braces,
+      available: true,
+    },
+    {
+      id: "reddit" as const,
+      name: "Reddit",
+      description: "Markdown для Reddit",
+      icon: MessageSquare,
+      available: true,
+    },
   ];
 
   const handleExport = (format: ExportFormat) => {
@@ -283,6 +361,12 @@ export default function ExportPackagePage() {
       setSelectedFormat("telegram");
     } else if (format === "4s") {
       export4sMutation.mutate();
+    } else if (format === "chgk-db") {
+      exportChgkDbMutation.mutate();
+    } else if (format === "openquiz") {
+      exportOpenQuizMutation.mutate();
+    } else if (format === "reddit") {
+      exportRedditMutation.mutate();
     } else {
       toast.info("Этот формат пока не реализован");
     }
@@ -292,10 +376,21 @@ export default function ExportPackagePage() {
     exportDocxMutation.isPending ||
     export4sMutation.isPending ||
     exportPptxMutation.isPending ||
-    exportTelegramMutation.isPending;
+    exportTelegramMutation.isPending ||
+    exportChgkDbMutation.isPending ||
+    exportOpenQuizMutation.isPending ||
+    exportRedditMutation.isPending;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      <Link
+        href={`/${packageId}`}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Назад к пакету
+      </Link>
+
       <h1 className="text-2xl font-bold">Экспорт пакета</h1>
 
       {selectedFormat === "pptx" ? (
@@ -337,6 +432,23 @@ export default function ExportPackagePage() {
               </div>
             </div>
 
+            <div className="pt-2 border-t">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={pptxOptions.randomize ?? false}
+                  onChange={(e) =>
+                    setPptxOptions((prev) => ({
+                      ...prev,
+                      randomize: e.target.checked,
+                    }))
+                  }
+                  className="rounded border-input"
+                />
+                Перемешать вопросы
+              </label>
+            </div>
+
             <button
               type="button"
               onClick={() => exportPptxMutation.mutate()}
@@ -368,58 +480,42 @@ export default function ExportPackagePage() {
             <h2 className="text-lg font-semibold">Настройки Telegram</h2>
 
             <div className="space-y-4">
-              {/* Bot status */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => testBotMutation.mutate()}
-                  disabled={testBotMutation.isPending}
-                  className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
-                >
-                  {testBotMutation.isPending ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Проверка...
-                    </span>
-                  ) : botStatus.tested && botStatus.ok ? (
-                    <span className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
-                      Бот подключен
-                    </span>
-                  ) : botStatus.tested && !botStatus.ok ? (
-                    <span className="flex items-center gap-2">
-                      <X className="h-4 w-4 text-red-600" />
-                      Ошибка подключения
-                    </span>
-                  ) : (
-                    "Проверить подключение"
-                  )}
-                </button>
-                {botStatus.tested && botStatus.ok && botStatus.name && (
-                  <span className="text-sm text-muted-foreground">@{botStatus.name}</span>
-                )}
-              </div>
-              {botStatus.tested && !botStatus.ok && botStatus.error && (
-                <p className="text-xs text-red-600">{botStatus.error}</p>
-              )}
-
+              {/* Channel selection */}
               <div>
-                <label className="text-sm font-medium">ID канала</label>
-                <input
-                  type="text"
-                  value={telegramOptions.channelId}
-                  onChange={(e) =>
-                    setTelegramOptions((prev) => ({
-                      ...prev,
-                      channelId: e.target.value,
-                    }))
-                  }
-                  placeholder="@channel или -1001234567890"
-                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Бот должен быть администратором канала
-                </p>
+                <label className="text-sm font-medium">Канал</label>
+
+                {channels.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {channels.map((channel) => (
+                      <button
+                        key={channel.channelId}
+                        type="button"
+                        onClick={() => setSelectedChannelId(channel.channelId)}
+                        className={`w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                          selectedChannelId === channel.channelId
+                            ? "border-primary bg-primary/5"
+                            : "hover:bg-accent"
+                        }`}
+                      >
+                        {selectedChannelId === channel.channelId && (
+                          <Check className="h-4 w-4 text-primary" />
+                        )}
+                        <span>{channel.channelTitle || channel.channelId}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-md border border-dashed p-4 text-center">
+                    <p className="text-sm text-muted-foreground">Нет привязанных каналов</p>
+                    <Link
+                      href="/settings"
+                      className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Привязать в настройках
+                    </Link>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -493,13 +589,10 @@ export default function ExportPackagePage() {
 
             <button
               type="button"
-              onClick={() => {
-                localStorage.setItem("telegram_channel", telegramOptions.channelId);
-                exportTelegramMutation.mutate();
-              }}
+              onClick={() => exportTelegramMutation.mutate()}
               disabled={
                 exportTelegramMutation.isPending ||
-                !telegramOptions.channelId ||
+                !selectedChannel?.channelId ||
                 !questions?.length
               }
               className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -536,6 +629,7 @@ export default function ExportPackagePage() {
                     { value: "none", label: "Без спойлеров" },
                     { value: "whiten", label: "Белый текст" },
                     { value: "pagebreak", label: "На новой странице" },
+                    { value: "dots", label: "Точки вместо ответа" },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -585,6 +679,23 @@ export default function ExportPackagePage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={docxOptions.randomize ?? false}
+                    onChange={(e) =>
+                      setDocxOptions((prev) => ({
+                        ...prev,
+                        randomize: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-input"
+                  />
+                  Перемешать вопросы
+                </label>
               </div>
             </div>
 

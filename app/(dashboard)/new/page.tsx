@@ -1,11 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileText, Loader2, Trello, Upload } from "lucide-react";
+import { ArrowLeft, Check, FileText, Loader2, Trello, Upload } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createPackage, importParsedPackage } from "@/lib/db/client";
-import { parseDocx } from "@/lib/parser/docx";
+import type { ParsedStructure, Question as ParsedQuestion } from "@/lib/parser";
+import { type DocxImage, parseDocx } from "@/lib/parser/docx";
+import { parseTxtFile } from "@/lib/parser/txt";
 import {
   clearTrelloToken,
   getTrelloToken,
@@ -51,8 +54,34 @@ export default function NewPackagePage() {
       setError(null);
 
       try {
-        const { structure, images } = await parseDocx(file);
-        const title = file.name.replace(/\.docx$/i, "");
+        let structure: ParsedStructure;
+        let images: DocxImage[] = [];
+
+        if (file.name.toLowerCase().endsWith(".txt")) {
+          // Parse TXT file
+          const content = await file.text();
+          const txtQuestions = parseTxtFile(content);
+          structure = txtQuestions.map((q) => [
+            "Question",
+            {
+              question: q.question,
+              answer: q.answer ?? undefined,
+              zachet: q.zachet ?? undefined,
+              nezachet: q.nezachet ?? undefined,
+              comment: q.comment ?? undefined,
+              source: q.source ?? undefined,
+              author: q.author ?? undefined,
+              handout: q.handout ?? undefined,
+            } as ParsedQuestion,
+          ]);
+        } else {
+          // Parse DOCX file
+          const result = await parseDocx(file);
+          structure = result.structure;
+          images = result.images;
+        }
+
+        const title = file.name.replace(/\.(docx|txt)$/i, "");
         const packageId = await importParsedPackage(title, structure, images);
         return packageId;
       } finally {
@@ -119,10 +148,14 @@ export default function NewPackagePage() {
 
   const handleFile = useCallback(
     (file: File) => {
-      if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const isDocx =
+        file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      const isTxt = file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt");
+
+      if (isDocx || isTxt) {
         importMutation.mutate(file);
       } else {
-        setError("Пожалуйста, выберите файл DOCX");
+        setError("Пожалуйста, выберите файл DOCX или TXT");
       }
     },
     [importMutation],
@@ -134,14 +167,17 @@ export default function NewPackagePage() {
       setIsDragging(false);
 
       const files = Array.from(e.dataTransfer.files);
-      const docxFile = files.find(
-        (f) => f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      const supportedFile = files.find(
+        (f) =>
+          f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+          f.type === "text/plain" ||
+          f.name.toLowerCase().endsWith(".txt"),
       );
 
-      if (docxFile) {
-        handleFile(docxFile);
+      if (supportedFile) {
+        handleFile(supportedFile);
       } else {
-        setError("Пожалуйста, выберите файл DOCX");
+        setError("Пожалуйста, выберите файл DOCX или TXT");
       }
     },
     [handleFile],
@@ -159,6 +195,14 @@ export default function NewPackagePage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Все пакеты
+      </Link>
+
       <h1 className="text-2xl font-bold">Новый пакет</h1>
 
       {error && (
@@ -188,12 +232,17 @@ export default function NewPackagePage() {
         ) : (
           <>
             <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-lg font-medium">Перетащите DOCX файл сюда</p>
+            <p className="text-lg font-medium">Перетащите DOCX или TXT файл сюда</p>
             <p className="text-sm text-muted-foreground mt-1">или выберите файл вручную</p>
             <label className="mt-4 inline-flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium cursor-pointer hover:bg-secondary/80">
               <FileText className="h-4 w-4" />
               Выбрать файл
-              <input type="file" accept=".docx" className="hidden" onChange={handleFileSelect} />
+              <input
+                type="file"
+                accept=".docx,.txt"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
             </label>
           </>
         )}

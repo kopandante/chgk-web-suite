@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Edit, Trash2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowLeft, Download, Edit, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FormatSource, FormatText } from "@/components/format-text";
 import {
   AlertDialog,
@@ -23,6 +24,92 @@ import {
   getQuestionsByPackage,
   getToursByPackage,
 } from "@/lib/db/client";
+import type { Question } from "@/lib/db/schema";
+
+function QuestionCard({ question, index }: { question: Question; index: number }) {
+  return (
+    <div className="rounded-lg border p-4 space-y-2">
+      <div className="text-sm text-muted-foreground font-medium">
+        Вопрос {question.number ?? index + 1}
+      </div>
+      {question.handout && (
+        <div className="bg-muted/50 rounded-md p-3 text-sm">
+          <span className="font-medium text-muted-foreground">Раздатка: </span>
+          <FormatText text={question.handout} />
+        </div>
+      )}
+      <div className="whitespace-pre-wrap">
+        <FormatText text={question.question} />
+      </div>
+      {question.answer && (
+        <div className="pt-2 border-t">
+          <span className="text-sm font-medium text-muted-foreground">Ответ: </span>
+          <FormatText text={question.answer} />
+        </div>
+      )}
+      {question.zachet && (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium">Зачет: </span>
+          <FormatText text={question.zachet} />
+        </div>
+      )}
+      {question.source && (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium">Источник: </span>
+          <FormatSource source={question.source} />
+        </div>
+      )}
+      {question.comment && (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium">Комментарий: </span>
+          <FormatText text={question.comment} />
+        </div>
+      )}
+      {question.author && (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium">Автор: </span>
+          <FormatText text={question.author} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VirtualizedQuestionList({ questions }: { questions: Question[] }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: questions.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200,
+    overscan: 5,
+  });
+
+  const items = virtualizer.getVirtualItems();
+
+  return (
+    <div ref={parentRef} className="h-[calc(100vh-20rem)] overflow-auto">
+      <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+        {items.map((virtualItem) => {
+          const question = questions[virtualItem.index];
+          return (
+            <div
+              key={question.id}
+              data-index={virtualItem.index}
+              ref={virtualizer.measureElement}
+              className="absolute top-0 left-0 w-full pb-4"
+              style={{
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <QuestionCard question={question} index={virtualItem.index} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function PackagePage() {
   const params = useParams();
@@ -70,6 +157,14 @@ export default function PackagePage() {
 
   return (
     <div className="space-y-6">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Все пакеты
+      </Link>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{pkg.title}</h1>
@@ -160,60 +255,13 @@ export default function PackagePage() {
       )}
 
       {/* Questions */}
-      {filteredQuestions && (
+      {filteredQuestions && filteredQuestions.length > 0 && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">
             Вопросы ({filteredQuestions.length}
             {selectedTourId && questions ? ` из ${questions.length}` : ""})
           </h2>
-          <div className="space-y-4">
-            {filteredQuestions.map((question, index) => (
-              <div key={question.id} className="rounded-lg border p-4 space-y-2">
-                <div className="text-sm text-muted-foreground font-medium">
-                  Вопрос {question.number ?? index + 1}
-                </div>
-                {question.handout && (
-                  <div className="bg-muted/50 rounded-md p-3 text-sm">
-                    <span className="font-medium text-muted-foreground">Раздатка: </span>
-                    <FormatText text={question.handout} />
-                  </div>
-                )}
-                <div className="whitespace-pre-wrap">
-                  <FormatText text={question.question} />
-                </div>
-                {question.answer && (
-                  <div className="pt-2 border-t">
-                    <span className="text-sm font-medium text-muted-foreground">Ответ: </span>
-                    <FormatText text={question.answer} />
-                  </div>
-                )}
-                {question.zachet && (
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Зачет: </span>
-                    <FormatText text={question.zachet} />
-                  </div>
-                )}
-                {question.source && (
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Источник: </span>
-                    <FormatSource source={question.source} />
-                  </div>
-                )}
-                {question.comment && (
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Комментарий: </span>
-                    <FormatText text={question.comment} />
-                  </div>
-                )}
-                {question.author && (
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Автор: </span>
-                    <FormatText text={question.author} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <VirtualizedQuestionList questions={filteredQuestions} />
         </div>
       )}
     </div>

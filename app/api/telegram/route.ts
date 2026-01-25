@@ -1,13 +1,17 @@
+import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
 import { NextResponse } from "next/server";
+import { api } from "@/convex/_generated/api";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-if (!BOT_TOKEN) {
-  console.warn("TELEGRAM_BOT_TOKEN is not set");
-}
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function GET() {
-  // Test bot connection - getMe
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!BOT_TOKEN) {
     return NextResponse.json({ ok: false, error: "Bot token not configured" }, { status: 500 });
   }
@@ -29,7 +33,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  // Send message to channel
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!BOT_TOKEN) {
     return NextResponse.json({ ok: false, error: "Bot token not configured" }, { status: 500 });
   }
@@ -40,6 +48,13 @@ export async function POST(request: Request) {
 
     if (!channelId || !text) {
       return NextResponse.json({ ok: false, error: "Missing channelId or text" }, { status: 400 });
+    }
+
+    // Проверить, что канал принадлежит пользователю
+    const channels = await convex.query(api.telegram.getUserChannels, { clerkUserId: userId });
+    const isOwner = channels.some((c) => c.channelId === channelId);
+    if (!isOwner) {
+      return NextResponse.json({ ok: false, error: "Channel not linked" }, { status: 403 });
     }
 
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {

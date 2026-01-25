@@ -2,8 +2,9 @@
 // Dynamic import to avoid SSR issues with Node.js modules
 
 import type { Image, Package, Question, Tour } from "@/lib/db/schema";
+import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
-export interface PptxExportOptions {
+export interface PptxExportOptions extends RandomizeOptions {
   // Slide dimensions
   slideWidth?: number; // in inches
   slideHeight?: number;
@@ -21,7 +22,7 @@ export interface PptxExportOptions {
   includeImages?: boolean;
 }
 
-const DEFAULT_OPTIONS: Required<PptxExportOptions> = {
+const DEFAULT_OPTIONS: Omit<Required<PptxExportOptions>, "randomizeSeed"> = {
   slideWidth: 10,
   slideHeight: 5.625, // 16:9 ratio
   backgroundColor: "FFFFFF",
@@ -33,6 +34,7 @@ const DEFAULT_OPTIONS: Required<PptxExportOptions> = {
   showQuestionNumber: true,
   separateAnswerSlides: true,
   includeImages: true,
+  randomize: false,
 };
 
 // Remove image placeholders from text
@@ -69,6 +71,9 @@ export async function exportToPptx(
   userOptions: PptxExportOptions = {},
 ): Promise<Blob> {
   const options = { ...DEFAULT_OPTIONS, ...userOptions };
+
+  // Apply randomization if enabled
+  const processedQuestions = maybeShuffleQuestions(questions, userOptions);
 
   // Create image map for quick lookup
   const imageMap = new Map<string, Image>();
@@ -117,7 +122,7 @@ export async function exportToPptx(
 
   // Group questions by tour
   const tourMap = new Map<string | null, Question[]>();
-  for (const q of questions) {
+  for (const q of processedQuestions) {
     const key = q.tour_id;
     if (!tourMap.has(key)) {
       tourMap.set(key, []);

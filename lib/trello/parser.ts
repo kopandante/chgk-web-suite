@@ -63,46 +63,31 @@ function parseCardDescription(desc: string): Partial<ParsedQuestion> {
     {
       field: "zachet",
       patterns: [
-        new RegExp(
-          `(?:^|\\n)\\s*(?:\\*\\*)?(?:Зач[её]т|Accept)[:.;]?\\s*(?:\\*\\*)?\\s*(.+?)(?=\\n(?:\\*\\*)?(?:Незач|Reject|Комм|Comment|Источ|Source|Автор|Author|Разд|Handout)|$)`,
-          "is",
-        ),
+        /(?:^|\n)\s*(?:\*\*)?(?:Зач[её]т|Accept)[:.;]?\s*(?:\*\*)?\s*(.+?)(?=\n(?:\*\*)?(?:Незач|Reject|Комм|Comment|Источ|Source|Автор|Author|Разд|Handout)|$)/is,
       ],
     },
     {
       field: "nezachet",
       patterns: [
-        new RegExp(
-          `(?:^|\\n)\\s*(?:\\*\\*)?(?:Незач[её]т|Reject)[:.;]?\\s*(?:\\*\\*)?\\s*(.+?)(?=\\n(?:\\*\\*)?(?:Комм|Comment|Источ|Source|Автор|Author|Разд|Handout)|$)`,
-          "is",
-        ),
+        /(?:^|\n)\s*(?:\*\*)?(?:Незач[её]т|Reject)[:.;]?\s*(?:\*\*)?\s*(.+?)(?=\n(?:\*\*)?(?:Комм|Comment|Источ|Source|Автор|Author|Разд|Handout)|$)/is,
       ],
     },
     {
       field: "comment",
       patterns: [
-        new RegExp(
-          `(?:^|\\n)\\s*(?:\\*\\*)?(?:Комментарий|Comment|Комм)[:.;]?\\s*(?:\\*\\*)?\\s*(.+?)(?=\\n(?:\\*\\*)?(?:Источ|Source|Автор|Author|Разд|Handout)|$)`,
-          "is",
-        ),
+        /(?:^|\n)\s*(?:\*\*)?(?:Комментарий|Comment|Комм)[:.;]?\s*(?:\*\*)?\s*(.+?)(?=\n(?:\*\*)?(?:Источ|Source|Автор|Author|Разд|Handout)|$)/is,
       ],
     },
     {
       field: "source",
       patterns: [
-        new RegExp(
-          `(?:^|\\n)\\s*(?:\\*\\*)?(?:Источник|Source|Ист)[:.;]?\\s*(?:\\*\\*)?\\s*(.+?)(?=\\n(?:\\*\\*)?(?:Автор|Author|Разд|Handout)|$)`,
-          "is",
-        ),
+        /(?:^|\n)\s*(?:\*\*)?(?:Источник|Source|Ист)[:.;]?\s*(?:\*\*)?\s*(.+?)(?=\n(?:\*\*)?(?:Автор|Author|Разд|Handout)|$)/is,
       ],
     },
     {
       field: "author",
       patterns: [
-        new RegExp(
-          `(?:^|\\n)\\s*(?:\\*\\*)?(?:Автор|Author|Авт)[:.;]?\\s*(?:\\*\\*)?\\s*(.+?)(?=\\n(?:\\*\\*)?(?:Разд|Handout)|$)`,
-          "is",
-        ),
+        /(?:^|\n)\s*(?:\*\*)?(?:Автор|Author|Авт)[:.;]?\s*(?:\*\*)?\s*(.+?)(?=\n(?:\*\*)?(?:Разд|Handout)|$)/is,
       ],
     },
     {

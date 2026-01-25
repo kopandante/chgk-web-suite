@@ -815,4 +815,5 @@ export function parseTxt(
 }
 
 export * from "./regexes";
+export * from "./txt";
 export * from "./types";

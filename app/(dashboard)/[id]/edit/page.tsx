@@ -1,10 +1,26 @@
 "use client";
 
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   createQuestion,
@@ -15,20 +31,39 @@ import {
   updatePackage,
   updateQuestion,
 } from "@/lib/db/client";
+import type { QuestionFormData } from "@/lib/validation/schemas";
 
-interface QuestionFormData {
+interface SortableItemProps {
   id: string;
-  number: number | null;
-  question: string;
-  answer: string | null;
-  zachet: string | null;
-  nezachet: string | null;
-  comment: string | null;
-  source: string | null;
-  author: string | null;
-  handout: string | null;
-  isNew?: boolean;
-  isDeleted?: boolean;
+  children: React.ReactNode;
+}
+
+function SortableItem({ id, children }: SortableItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="rounded-lg border bg-background">
+      <div className="flex items-center gap-2 p-3 w-full">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing touch-none"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div className="flex-1">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function EditPackagePage() {
@@ -43,6 +78,14 @@ export default function EditPackagePage() {
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [errors, setErrors] = useState<{ title?: string; questions?: Record<string, string> }>({});
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const { data: pkg, isLoading: pkgLoading } = useQuery({
     queryKey: ["package", packageId],
@@ -61,38 +104,59 @@ export default function EditPackagePage() {
     enabled: !!pkg,
   });
 
-  // Initialize form data when data is loaded
-  if (pkg && dbQuestions && !initialized) {
-    setTitle(pkg.title);
-    setEditor(pkg.editor || "");
-    setDate(pkg.date || "");
-    setQuestions(
-      dbQuestions.map((q) => ({
-        id: q.id,
-        number: q.number,
-        question: q.question,
-        answer: q.answer,
-        zachet: q.zachet,
-        nezachet: q.nezachet,
-        comment: q.comment,
-        source: q.source,
-        author: q.author,
-        handout: q.handout,
-      })),
-    );
-    setInitialized(true);
-  }
+  // Initialize form when data loads
+  useEffect(() => {
+    if (pkg && dbQuestions && !initialized) {
+      setTitle(pkg.title);
+      setEditor(pkg.editor || "");
+      setDate(pkg.date || "");
+      setQuestions(
+        dbQuestions.map((q) => ({
+          id: q.id,
+          number: q.number,
+          question: q.question,
+          answer: q.answer,
+          zachet: q.zachet,
+          nezachet: q.nezachet,
+          comment: q.comment,
+          source: q.source,
+          author: q.author,
+          handout: q.handout,
+        })),
+      );
+      setInitialized(true);
+    }
+  }, [pkg, dbQuestions, initialized]);
+
+  const validate = () => {
+    const newErrors: typeof errors = {};
+
+    if (!title.trim()) {
+      newErrors.title = "Название обязательно";
+    }
+
+    const questionErrors: Record<string, string> = {};
+    for (const q of questions.filter((q) => !q.isDeleted)) {
+      if (!q.question.trim()) {
+        questionErrors[q.id] = "Текст вопроса обязателен";
+      }
+    }
+    if (Object.keys(questionErrors).length > 0) {
+      newErrors.questions = questionErrors;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Update package metadata
       await updatePackage(packageId, {
         title,
         editor: editor || null,
         date: date || null,
       });
 
-      // Process questions
       for (const q of questions) {
         if (q.isDeleted) {
           await deleteQuestion(q.id);
@@ -125,7 +189,6 @@ export default function EditPackagePage() {
           });
         }
       }
-
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["package", packageId] });
@@ -139,13 +202,27 @@ export default function EditPackagePage() {
     },
   });
 
-  const updateQuestionField = (
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validate()) {
+      saveMutation.mutate();
+    }
+  };
+
+  const updateQuestionField = <K extends keyof QuestionFormData>(
     id: string,
-    field: keyof QuestionFormData,
-    value: string | number | null,
+    field: K,
+    value: QuestionFormData[K],
   ) => {
     setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
     setHasChanges(true);
+    // Clear error for this question
+    if (errors.questions?.[id]) {
+      setErrors((prev) => {
+        const { [id]: _, ...rest } = prev.questions || {};
+        return { ...prev, questions: Object.keys(rest).length > 0 ? rest : undefined };
+      });
+    }
   };
 
   const addQuestion = () => {
@@ -175,7 +252,11 @@ export default function EditPackagePage() {
   };
 
   const removeQuestion = (id: string) => {
-    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, isDeleted: true } : q)));
+    setQuestions((prev) =>
+      prev
+        .map((q) => (q.id === id ? { ...q, isDeleted: true } : q))
+        .filter((q) => !(q.isNew && q.isDeleted)),
+    );
     setHasChanges(true);
   };
 
@@ -191,22 +272,22 @@ export default function EditPackagePage() {
     });
   };
 
-  const moveQuestion = (id: string, direction: "up" | "down") => {
-    setQuestions((prev) => {
-      const visibleQuestions = prev.filter((q) => !q.isDeleted);
-      const idx = visibleQuestions.findIndex((q) => q.id === id);
-      if (idx === -1) return prev;
-      if (direction === "up" && idx === 0) return prev;
-      if (direction === "down" && idx === visibleQuestions.length - 1) return prev;
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-      const newVisible = [...visibleQuestions];
-      [newVisible[idx], newVisible[swapIdx]] = [newVisible[swapIdx], newVisible[idx]];
+    const visibleQuestions = questions.filter((q) => !q.isDeleted);
+    const oldIndex = visibleQuestions.findIndex((q) => q.id === active.id);
+    const newIndex = visibleQuestions.findIndex((q) => q.id === over.id);
 
-      // Rebuild with deleted questions at their original positions
-      const deleted = prev.filter((q) => q.isDeleted);
-      return [...newVisible, ...deleted];
-    });
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = [...visibleQuestions];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    const deleted = questions.filter((q) => q.isDeleted);
+    setQuestions([...reordered, ...deleted]);
     setHasChanges(true);
   };
 
@@ -226,241 +307,260 @@ export default function EditPackagePage() {
         <h1 className="text-2xl font-bold">Редактирование пакета</h1>
         <Link
           href={`/${packageId}`}
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          Назад к просмотру
+          <ArrowLeft className="h-4 w-4" />
+          Назад к пакету
         </Link>
       </div>
 
-      {/* Package metadata */}
-      <div className="rounded-lg border p-4 space-y-4">
-        <h2 className="font-semibold">Метаданные пакета</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">Название</span>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                setHasChanges(true);
-              }}
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Редактор</span>
-            <input
-              type="text"
-              value={editor}
-              onChange={(e) => {
-                setEditor(e.target.value);
-                setHasChanges(true);
-              }}
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Дата</span>
-            <input
-              type="text"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setHasChanges(true);
-              }}
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="например: 2024-01-01"
-            />
-          </label>
-        </div>
-      </div>
+      <form onSubmit={handleSubmit}>
+        {/* Package metadata */}
+        <div className="rounded-lg border p-4 space-y-4">
+          <h2 className="font-semibold">Метаданные пакета</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium">
+                Название <span className="text-destructive">*</span>
+              </span>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setHasChanges(true);
+                  if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+                }}
+                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                  errors.title ? "border-destructive" : ""
+                }`}
+              />
+              {errors.title && <p className="mt-1 text-xs text-destructive">{errors.title}</p>}
+            </label>
 
-      {/* Questions */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Вопросы ({visibleQuestions.length})</h2>
-          <button
-            type="button"
-            onClick={addQuestion}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            <label className="block">
+              <span className="text-sm font-medium">Редактор</span>
+              <input
+                type="text"
+                value={editor}
+                onChange={(e) => {
+                  setEditor(e.target.value);
+                  setHasChanges(true);
+                }}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium">Дата</span>
+              <input
+                type="text"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setHasChanges(true);
+                }}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="например: 2024-01-01"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* Questions */}
+        <div className="space-y-4 mt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Вопросы ({visibleQuestions.length})</h2>
+            <button
+              type="button"
+              onClick={addQuestion}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить вопрос
+            </button>
+          </div>
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <Plus className="h-4 w-4" />
-            Добавить вопрос
-          </button>
-        </div>
+            <SortableContext
+              items={visibleQuestions.map((q) => q.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {visibleQuestions.map((q, visibleIdx) => (
+                  <SortableItem key={q.id} id={q.id}>
+                    <div className="flex items-center gap-2 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(q.id)}
+                        className="flex items-center gap-2 flex-1 text-left cursor-pointer hover:bg-muted/50 -m-2 p-2 rounded"
+                      >
+                        <span className="font-medium text-sm">
+                          Вопрос {q.number ?? visibleIdx + 1}
+                        </span>
+                        <span className="text-sm text-muted-foreground truncate flex-1">
+                          {q.question.slice(0, 80)}
+                          {q.question.length > 80 ? "..." : ""}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeQuestion(q.id)}
+                        className="p-1 hover:bg-destructive/10 text-destructive rounded"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
 
-        <div className="space-y-2">
-          {visibleQuestions.map((q, idx) => (
-            <div key={q.id} className="rounded-lg border">
-              {/* Question header */}
-              <div className="flex items-center gap-2 p-3 w-full hover:bg-muted/50">
-                <button
-                  type="button"
-                  onClick={() => toggleExpanded(q.id)}
-                  className="flex items-center gap-2 flex-1 text-left cursor-pointer"
-                >
-                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm">Вопрос {q.number ?? idx + 1}</span>
-                  <span className="text-sm text-muted-foreground truncate flex-1">
-                    {q.question.slice(0, 80)}
-                    {q.question.length > 80 ? "..." : ""}
-                  </span>
-                </button>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => moveQuestion(q.id, "up")}
-                    disabled={idx === 0}
-                    className="p-1 hover:bg-muted rounded disabled:opacity-30"
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveQuestion(q.id, "down")}
-                    disabled={idx === visibleQuestions.length - 1}
-                    className="p-1 hover:bg-muted rounded disabled:opacity-30"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeQuestion(q.id)}
-                    className="p-1 hover:bg-destructive/10 text-destructive rounded"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                    {expandedQuestions.has(q.id) && (
+                      <div className="border-t mt-3 pt-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <label className="block">
+                            <span className="text-sm font-medium">Номер</span>
+                            <input
+                              type="number"
+                              value={q.number ?? ""}
+                              onChange={(e) =>
+                                updateQuestionField(
+                                  q.id,
+                                  "number",
+                                  e.target.value ? Number.parseInt(e.target.value, 10) : null,
+                                )
+                              }
+                              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-sm font-medium">Автор</span>
+                            <input
+                              type="text"
+                              value={q.author ?? ""}
+                              onChange={(e) =>
+                                updateQuestionField(q.id, "author", e.target.value || null)
+                              }
+                              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="block">
+                          <span className="text-sm font-medium">Раздатка</span>
+                          <textarea
+                            value={q.handout ?? ""}
+                            onChange={(e) =>
+                              updateQuestionField(q.id, "handout", e.target.value || null)
+                            }
+                            rows={2}
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm font-medium">
+                            Текст вопроса <span className="text-destructive">*</span>
+                          </span>
+                          <textarea
+                            value={q.question}
+                            onChange={(e) => updateQuestionField(q.id, "question", e.target.value)}
+                            rows={4}
+                            className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                              errors.questions?.[q.id] ? "border-destructive" : ""
+                            }`}
+                          />
+                          {errors.questions?.[q.id] && (
+                            <p className="mt-1 text-xs text-destructive">
+                              {errors.questions[q.id]}
+                            </p>
+                          )}
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm font-medium">Ответ</span>
+                          <input
+                            type="text"
+                            value={q.answer ?? ""}
+                            onChange={(e) =>
+                              updateQuestionField(q.id, "answer", e.target.value || null)
+                            }
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                          />
+                        </label>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <label className="block">
+                            <span className="text-sm font-medium">Зачет</span>
+                            <input
+                              type="text"
+                              value={q.zachet ?? ""}
+                              onChange={(e) =>
+                                updateQuestionField(q.id, "zachet", e.target.value || null)
+                              }
+                              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-sm font-medium">Незачет</span>
+                            <input
+                              type="text"
+                              value={q.nezachet ?? ""}
+                              onChange={(e) =>
+                                updateQuestionField(q.id, "nezachet", e.target.value || null)
+                              }
+                              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="block">
+                          <span className="text-sm font-medium">Комментарий</span>
+                          <textarea
+                            value={q.comment ?? ""}
+                            onChange={(e) =>
+                              updateQuestionField(q.id, "comment", e.target.value || null)
+                            }
+                            rows={2}
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm font-medium">Источник</span>
+                          <textarea
+                            value={q.source ?? ""}
+                            onChange={(e) =>
+                              updateQuestionField(q.id, "source", e.target.value || null)
+                            }
+                            rows={2}
+                            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </SortableItem>
+                ))}
               </div>
-
-              {/* Question form */}
-              {expandedQuestions.has(q.id) && (
-                <div className="border-t p-4 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block">
-                      <span className="text-sm font-medium">Номер</span>
-                      <input
-                        type="number"
-                        value={q.number ?? ""}
-                        onChange={(e) =>
-                          updateQuestionField(
-                            q.id,
-                            "number",
-                            e.target.value ? Number.parseInt(e.target.value, 10) : null,
-                          )
-                        }
-                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Автор</span>
-                      <input
-                        type="text"
-                        value={q.author ?? ""}
-                        onChange={(e) =>
-                          updateQuestionField(q.id, "author", e.target.value || null)
-                        }
-                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                      />
-                    </label>
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm font-medium">Раздатка</span>
-                    <textarea
-                      value={q.handout ?? ""}
-                      onChange={(e) => updateQuestionField(q.id, "handout", e.target.value || null)}
-                      rows={2}
-                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm font-medium">Текст вопроса</span>
-                    <textarea
-                      value={q.question}
-                      onChange={(e) => updateQuestionField(q.id, "question", e.target.value)}
-                      rows={4}
-                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm font-medium">Ответ</span>
-                    <input
-                      type="text"
-                      value={q.answer ?? ""}
-                      onChange={(e) => updateQuestionField(q.id, "answer", e.target.value || null)}
-                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </label>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block">
-                      <span className="text-sm font-medium">Зачет</span>
-                      <input
-                        type="text"
-                        value={q.zachet ?? ""}
-                        onChange={(e) =>
-                          updateQuestionField(q.id, "zachet", e.target.value || null)
-                        }
-                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Незачет</span>
-                      <input
-                        type="text"
-                        value={q.nezachet ?? ""}
-                        onChange={(e) =>
-                          updateQuestionField(q.id, "nezachet", e.target.value || null)
-                        }
-                        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                      />
-                    </label>
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm font-medium">Комментарий</span>
-                    <textarea
-                      value={q.comment ?? ""}
-                      onChange={(e) => updateQuestionField(q.id, "comment", e.target.value || null)}
-                      rows={2}
-                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm font-medium">Источник</span>
-                    <textarea
-                      value={q.source ?? ""}
-                      onChange={(e) => updateQuestionField(q.id, "source", e.target.value || null)}
-                      rows={2}
-                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
-          ))}
+            </SortableContext>
+          </DndContext>
         </div>
-      </div>
 
-      {/* Save button */}
-      {hasChanges && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-          <button
-            type="button"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary/90 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" />
-            {saveMutation.isPending ? "Сохранение..." : "Сохранить изменения"}
-          </button>
-        </div>
-      )}
+        {/* Save button */}
+        {hasChanges && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+            <button
+              type="submit"
+              disabled={saveMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {saveMutation.isPending ? "Сохранение..." : "Сохранить изменения"}
+            </button>
+          </div>
+        )}
+      </form>
     </div>
   );
 }

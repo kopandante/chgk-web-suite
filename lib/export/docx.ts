@@ -12,10 +12,13 @@ import {
 } from "docx";
 import { base64ToUint8Array } from "@/lib/db/client";
 import type { Image, Package, Question, Tour } from "@/lib/db/schema";
+import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
-export interface DocxExportOptions {
+export type SpoilerMode = "none" | "whiten" | "pagebreak" | "dots";
+
+export interface DocxExportOptions extends RandomizeOptions {
   // Spoiler options
-  spoilerMode?: "none" | "whiten" | "pagebreak";
+  spoilerMode?: SpoilerMode;
   // Include answers
   includeAnswers?: boolean;
   // Font settings
@@ -29,7 +32,12 @@ export interface DocxExportOptions {
   includeHandout?: boolean;
 }
 
-const DEFAULT_OPTIONS: Required<DocxExportOptions> = {
+// Internal options type with randomizeSeed as optional
+type InternalDocxOptions = Omit<Required<DocxExportOptions>, "randomizeSeed"> & {
+  randomizeSeed?: number | string;
+};
+
+const DEFAULT_OPTIONS: InternalDocxOptions = {
   spoilerMode: "none",
   includeAnswers: true,
   fontFamily: "Times New Roman",
@@ -39,7 +47,15 @@ const DEFAULT_OPTIONS: Required<DocxExportOptions> = {
   includeSource: true,
   includeAuthor: true,
   includeHandout: true,
+  randomize: false,
+  randomizeSeed: undefined,
 };
+
+// Generate dots placeholder for spoiler mode
+// Uses fixed-length placeholder to avoid revealing answer length
+function generateDotsPlaceholder(): string {
+  return "........................";
+}
 
 // Remove image placeholders from text
 function stripImagePlaceholders(text: string): string {
@@ -101,11 +117,7 @@ function parseFormattingRuns(text: string): FormattedRun[] {
 }
 
 // Parse text and create TextRuns with formatting support
-function createTextRuns(
-  text: string,
-  options: Required<DocxExportOptions>,
-  color?: string,
-): TextRun[] {
+function createTextRuns(text: string, options: InternalDocxOptions, color?: string): TextRun[] {
   const cleaned = restoreUnderscores(stripImagePlaceholders(text));
   const lines = cleaned.split("\n");
   const runs: TextRun[] = [];
@@ -140,7 +152,7 @@ function createTextRuns(
 function createLabeledParagraph(
   label: string,
   text: string,
-  options: Required<DocxExportOptions>,
+  options: InternalDocxOptions,
   color?: string,
 ): Paragraph {
   return new Paragraph({
@@ -166,6 +178,9 @@ export async function exportToDocx(
   userOptions: DocxExportOptions = {},
 ): Promise<Blob> {
   const options = { ...DEFAULT_OPTIONS, ...userOptions };
+
+  // Apply randomization if enabled
+  const processedQuestions = maybeShuffleQuestions(questions, userOptions);
 
   // Create image map for quick lookup
   const imageMap = new Map<string, Image>();
@@ -224,7 +239,7 @@ export async function exportToDocx(
 
   // Group questions by tour
   const tourMap = new Map<string | null, Question[]>();
-  for (const q of questions) {
+  for (const q of processedQuestions) {
     const key = q.tour_id;
     if (!tourMap.has(key)) {
       tourMap.set(key, []);
@@ -333,12 +348,15 @@ export async function exportToDocx(
 
       // Answer color for whiten mode
       const answerColor = options.spoilerMode === "whiten" ? "FFFFFF" : undefined;
+      // Use dots placeholder in dots mode
+      const useDots = options.spoilerMode === "dots";
 
       for (let i = 0; i < tourQuestions.length; i++) {
         const question = tourQuestions[i];
         const questionNumber = question.number ?? i + 1;
 
         if (question.answer) {
+          const answerText = useDots ? generateDotsPlaceholder() : question.answer;
           children.push(
             new Paragraph({
               children: [
@@ -349,7 +367,7 @@ export async function exportToDocx(
                   size: options.fontSize * 2,
                   color: answerColor,
                 }),
-                ...createTextRuns(question.answer, options, answerColor),
+                ...createTextRuns(answerText, options, answerColor),
               ],
               spacing: { after: 80 },
             }),
@@ -357,6 +375,7 @@ export async function exportToDocx(
         }
 
         if (options.includeZachet && question.zachet) {
+          const zachetText = useDots ? generateDotsPlaceholder() : question.zachet;
           children.push(
             new Paragraph({
               children: [
@@ -368,7 +387,7 @@ export async function exportToDocx(
                   color: answerColor,
                 }),
                 ...createTextRuns(
-                  question.zachet,
+                  zachetText,
                   { ...options, fontSize: options.fontSize - 1 },
                   answerColor,
                 ),

@@ -2,7 +2,13 @@
 
 ## Текущий статус
 
-Проект использует локальную БД (sql.js + IndexedDB) вместо Convex. Clerk и E2E шифрование пока не реализованы.
+Проект использует:
+- Локальную БД (sql.js + IndexedDB) для пакетов/вопросов
+- Convex для привязки Telegram каналов (real-time)
+- Clerk для авторизации
+- Telegram Bot API для экспорта в каналы
+
+Все интеграции настроены и работают. E2E шифрование пока не реализовано.
 
 ### Реализовано
 
@@ -21,6 +27,18 @@
 - [x] Извлечение изображений из DOCX
 - [x] Отображение изображений в UI
 - [x] Обработка HTML таблиц в markdown
+- [x] Clerk авторизация
+- [x] Convex интеграция (real-time)
+- [x] Telegram привязка каналов (CHGK-XXXXXX)
+- [x] Страница настроек (управление интеграциями Telegram/Trello)
+- [x] Навигация: кнопки "Назад" на всех страницах
+- [x] Сайдбар: сохранение состояния (zustand persist)
+- [x] Сайдбар: аватар и кнопка выхода
+- [x] Telegram экспорт: остановка при первой ошибке
+- [x] Telegram экспорт: предупреждение при уходе со страницы
+- [x] Виртуализация списков (TanStack Virtual)
+- [x] Drag-n-drop вопросов в редакторе (dnd-kit)
+- [x] Валидация форм (Zod)
 
 ---
 
@@ -63,7 +81,7 @@
 | Telegram | Done | - |
 | LiveJournal | - | Low |
 | Reddit (Markdown) | - | Low |
-| db.chgk.info | - | Medium |
+| db.chgk.info | Done | - |
 | OpenQuiz (JSON) | - | Low |
 
 ### 4. Экспорт DOCX - детали
@@ -95,6 +113,9 @@
 |-------|----------|--------|
 | Постинг в канал | Через Bot API | Done |
 | Спойлеры | `<tg-spoiler>` тег | Done |
+| Привязка каналов | Верификация через код CHGK-XXXXXX | Done |
+| Множественные каналы | Несколько каналов на пользователя | Done |
+| Авторизация | Проверка владения каналом | Done |
 | Изображения | Через Imgur | - |
 
 ### 7. Интеграции
@@ -154,8 +175,9 @@
    - Импорт карточек как вопросов
    - Списки как туры
 
-5. **Экспорт db.chgk.info**
-   - Формат для загрузки на db.chgk.info
+5. ~~**Экспорт db.chgk.info**~~ DONE
+   - Текстовый формат для базы вопросов
+   - Теги: `<раздатка>`, `(pic:)`
 
 ### Low Priority
 
@@ -163,7 +185,48 @@
 7. **LaTeX/PDF экспорт**
 8. **Рандомизация вопросов**
 9. **Раздатки (handouts)**
-10. **Авторизация Clerk + Convex**
+10. ~~**Авторизация Clerk + Convex**~~ DONE (для Telegram каналов)
+11. **E2E шифрование пакетов**
+12. **Синхронизация пакетов через Convex**
+
+---
+
+## Настройка Clerk + Convex + Telegram
+
+**Статус: Настроено**
+
+- Clerk: `REDACTED.clerk.accounts.dev`
+- Convex: `REDACTED.convex.cloud`
+- Telegram Bot: `@REDACTED_bot`
+
+### Переменные окружения
+
+**.env.local:**
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+NEXT_PUBLIC_CONVEX_URL=https://REDACTED.convex.cloud
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_WEBHOOK_SECRET=...
+```
+
+**Convex Dashboard (Settings -> Environment Variables):**
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_SECRET`
+- `CLERK_JWT_ISSUER_DOMAIN` = `https://REDACTED.clerk.accounts.dev`
+
+### Настройка webhook (при необходимости)
+
+HTTP routes в Convex используют домен `.convex.site` (не `.convex.cloud`).
+
+```bash
+curl -X POST "https://api.telegram.org/bot{BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://REDACTED.convex.site/tg-webhook",
+    "secret_token": "{TELEGRAM_WEBHOOK_SECRET}"
+  }'
+```
 
 ---
 

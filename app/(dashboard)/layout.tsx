@@ -1,12 +1,15 @@
 "use client";
 
-import { Package, Settings } from "lucide-react";
+import { useClerk, useUser } from "@clerk/nextjs";
+import { LogOut, Package, Settings } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -25,6 +28,8 @@ const navItems = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   return (
     <SidebarProvider>
@@ -57,6 +62,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarFooter className="p-4 border-t">
+          <div className="flex items-center gap-3">
+            {user?.imageUrl ? (
+              <Image src={user.imageUrl} alt="" width={32} height={32} className="rounded-full" />
+            ) : (
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {(
+                    user?.firstName?.[0] ||
+                    user?.emailAddresses[0]?.emailAddress?.[0] ||
+                    "?"
+                  ).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                {user?.firstName || user?.emailAddresses[0]?.emailAddress || "Пользователь"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Выйти"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </SidebarFooter>
       </Sidebar>
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 border-b px-4">
