@@ -40,6 +40,8 @@ const NO_BREAK_SEQUENCES = [
 
 const NO_BREAK_SEQUENCES_LEFT = ["бы", "ли", "же", "—", "–"];
 
+// Mapping Latin letters to Cyrillic equivalents for accent conversion
+// All Latin accented vowels are converted to Cyrillic + combining acute
 const LETTERS_MAPPING: Record<string, string> = {
   a: "а",
   e: "е",
@@ -152,7 +154,7 @@ class QuoteFixer {
       if (tup[0] === "opening") {
         this.newS[idx] = tup[1] % 2 ? "«" : "„";
       } else if (tup[0] === "closing") {
-        this.newS[idx] = tup[1] % 2 ? "»" : "\u201D";
+        this.newS[idx] = tup[1] % 2 ? "»" : "\u201C";
       }
     }
 
@@ -165,8 +167,8 @@ export function getQuotesRight(s: string): string {
     s = new QuoteFixer(s).fix();
   }
 
-  s = s.replace(/(\w)'/gu, "$1'");
-  s = s.replace(/'(\w)/gu, "'$1");
+  s = s.replace(/(\w)'/gu, "$1\u2019");
+  s = s.replace(/'(\w)/gu, "\u2018$1");
 
   return s;
 }
@@ -260,18 +262,29 @@ function fixAccentsFunc(
       const char = word[i];
 
       if (!CYRILLIC_CHARS.has(char)) {
+        // Check if this is a Latin accented letter
         const normalized = char.normalize("NFD");
         if (
           normalized !== char &&
           normalized[0] in LETTERS_MAPPING &&
           ACCENTS_TO_FIX.has(normalized[1])
         ) {
-          const replacement = `${LETTERS_MAPPING[normalized[0]]}\u0301${normalized.slice(2)}`;
-          if (!replacements[char]) {
-            replacements[char] = replacement;
+          // Check surrounding characters to decide whether to convert
+          const prevChar = i > 0 ? word[i - 1] : "";
+          const nextChar = i < word.length - 1 ? word[i + 1] : "";
+          const prevIsCyrillic = prevChar && CYRILLIC_CHARS.has(prevChar);
+          const nextIsCyrillic = nextChar && CYRILLIC_CHARS.has(nextChar);
+
+          // Convert to Cyrillic only if surrounded by Cyrillic characters
+          if (prevIsCyrillic || nextIsCyrillic) {
+            const replacement = `${LETTERS_MAPPING[normalized[0]]}\u0301${normalized.slice(2)}`;
+            if (!replacements[char]) {
+              replacements[char] = replacement;
+            }
           }
         }
       } else if (i < word.length - 1 && ACCENTS_TO_FIX.has(word[i + 1])) {
+        // Normalize accent for Cyrillic characters
         const key = char + word[i + 1];
         replacements[key] = `${char}\u0301`;
       }

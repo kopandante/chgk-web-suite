@@ -17,6 +17,7 @@ const FIXTURES_DIR = join(import.meta.dir, "fixtures");
 // Files to skip (known issues or special formats that need investigation)
 const SKIP_CANONICAL = new Set([
   "balt09-1.txt", // encoding issues in test file
+  "octo2021_khmelkov.docx", // created with --preserve-formatting flag (italic markers)
 ]);
 
 // Get all canon files

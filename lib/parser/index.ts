@@ -544,6 +544,28 @@ export class ChgkParser {
         element[0] = "meta";
       }
 
+      // If meta contains only a number and next element is a question without number,
+      // merge the number into the question as handout material
+      if (
+        element[0] === "meta" &&
+        typeof element[1] === "string" &&
+        /^\d+$/.test(element[1].trim()) &&
+        idx + 1 < this.structure.length
+      ) {
+        const nextElement = this.structure[idx + 1];
+        if (
+          nextElement[0] === "question" &&
+          typeof nextElement[1] === "string" &&
+          !regexes.question.test(nextElement[1])
+        ) {
+          // Prepend the number to the question text
+          nextElement[1] = element[1].trim() + SEP + nextElement[1];
+          // Remove the meta element
+          this.structure.splice(idx, 1);
+          continue; // Don't increment idx since we removed an element
+        }
+      }
+
       if (element[0] in regexes && !["tour", "tourrev", "editor"].includes(element[0])) {
         if (element[0] === "question" && typeof element[1] === "string") {
           const match = regexes.question.exec(element[1]);

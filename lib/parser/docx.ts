@@ -122,27 +122,29 @@ function htmlToText(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(text, "text/html");
 
-  // Preserve formatting: add markdown markers around em/strong/i/b tags
-  for (const tag of doc.querySelectorAll("em, i")) {
-    tag.insertBefore(document.createTextNode("_"), tag.firstChild);
-    tag.appendChild(document.createTextNode("_"));
-  }
-  for (const tag of doc.querySelectorAll("strong, b")) {
-    tag.insertBefore(document.createTextNode("__"), tag.firstChild);
-    tag.appendChild(document.createTextNode("__"));
-  }
+  // Note: em/strong formatting is NOT preserved by default (matching chgksuite behavior)
+  // chgksuite only adds _text_ markers when --preserve-formatting flag is used
 
   // Process links: add URL to text like chgksuite
   for (const link of doc.querySelectorAll("a")) {
     const href = link.getAttribute("href");
     const linkText = link.textContent || "";
 
-    if (linkText.startsWith("http")) {
+    if (linkText.trim().startsWith("http")) {
       // Text is already a URL, just unwrap
       continue;
     }
 
-    if (href && href.startsWith("http") && !href.includes(linkText.trim())) {
+    // Compare without UNDERSCORE_MARKER to handle escaped underscores
+    const linkTextClean = linkText.trim().replace(/UNDERSCORE_MARKER/g, "_");
+    const hrefDecoded = href ? decodeURIComponent(href) : "";
+
+    if (
+      href &&
+      href.startsWith("http") &&
+      !href.includes(linkTextClean) &&
+      !hrefDecoded.includes(linkTextClean)
+    ) {
       // Add URL in parentheses after text
       link.textContent = `${linkText} (${href})`;
     }
@@ -197,8 +199,65 @@ function htmlToText(html: string): string {
     li.appendChild(document.createTextNode("\n"));
   }
 
+  // Process tables - convert to markdown format
+  for (const table of doc.querySelectorAll("table")) {
+    const rows = table.querySelectorAll("tr");
+    const allRowData: string[][] = [];
+
+    // First pass: collect all cell texts
+    for (const row of rows) {
+      const cells = row.querySelectorAll("td, th");
+      const cellTexts: string[] = [];
+      for (const cell of cells) {
+        const cellText = (cell.textContent || "").trim().replace(/\n/g, " ");
+        cellTexts.push(cellText);
+      }
+      allRowData.push(cellTexts);
+    }
+
+    // Calculate max width per column
+    const numCols = Math.max(...allRowData.map((r) => r.length));
+    const colWidths: number[] = [];
+    for (let col = 0; col < numCols; col++) {
+      const maxLen = Math.max(...allRowData.map((r) => (r[col] || "").length), 1);
+      colWidths.push(maxLen);
+    }
+
+    // Build markdown table
+    let markdownTable = "\n";
+    for (let rowIdx = 0; rowIdx < allRowData.length; rowIdx++) {
+      const rowData = allRowData[rowIdx];
+      const paddedCells: string[] = [];
+
+      for (let col = 0; col < numCols; col++) {
+        const text = rowData[col] || "";
+        const width = colWidths[col];
+        // Center text in cell
+        const totalPad = width - text.length;
+        const leftPad = Math.floor(totalPad / 2);
+        const rightPad = totalPad - leftPad;
+        paddedCells.push(" ".repeat(leftPad) + text + " ".repeat(rightPad));
+      }
+
+      markdownTable += "| " + paddedCells.join(" | ") + " |\n";
+
+      // Add separator after first row
+      if (rowIdx === 0 && allRowData.length > 1) {
+        markdownTable += "|" + colWidths.map((w) => "-".repeat(w + 2)).join("|") + "|\n";
+      }
+    }
+
+    // Replace table with markdown text
+    const textNode = document.createTextNode(markdownTable);
+    table.replaceWith(textNode);
+  }
+
   // Get text content
   let result = doc.body.textContent || "";
+
+  // Normalize Unicode to NFC (precomposed form)
+  result = result.normalize("NFC");
+
 
   // Cleanup
   result = result
@@ -221,6 +280,13 @@ function htmlToText(html: string): string {
 
   // Fix bad italic from Word
   result = result.replace(/_ *_/g, "");
+
+  // Move opening bracket before "Раздаточный материал:" for proper handout formatting
+  // Pattern: "Раздаточный материал:\n[" -> "[Раздаточный материал:\n"
+  result = result.replace(
+    /([Рр]аздаточный материал[:\s]*)\n\s*\[/gi,
+    "[$1\n",
+  );
 
   return result;
 }
