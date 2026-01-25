@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import {
   arrayBufferToBase64,
   base64ToArrayBuffer,
@@ -21,20 +21,25 @@ interface EncryptionProviderProps {
  */
 export function EncryptionProvider({ children }: EncryptionProviderProps) {
   const { user, isLoaded } = useUser();
+  const userRef = useRef(user);
   const initializedForRef = useRef<string | null>(null);
 
+  // Keep userRef in sync
+  userRef.current = user;
+
   useEffect(() => {
-    if (!isLoaded || !user) return;
-    if (initializedForRef.current === user.id) return;
+    const currentUser = userRef.current;
+    if (!isLoaded || !currentUser) return;
+    if (initializedForRef.current === currentUser.id) return;
 
     const { setReady, setError, setLoading } = useEncryptionStore.getState();
 
-    initializedForRef.current = user.id;
+    initializedForRef.current = currentUser.id;
     setLoading();
 
     (async () => {
       try {
-        const storedKey = user.unsafeMetadata?.encryptionKey as string | undefined;
+        const storedKey = currentUser.unsafeMetadata?.encryptionKey as string | undefined;
 
         if (storedKey) {
           const keyData = base64ToArrayBuffer(storedKey);
@@ -45,9 +50,9 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
           const exportedKey = await exportKey(newKey);
           const keyBase64 = arrayBufferToBase64(exportedKey);
 
-          await user.update({
+          await currentUser.update({
             unsafeMetadata: {
-              ...user.unsafeMetadata,
+              ...currentUser.unsafeMetadata,
               encryptionKey: keyBase64,
             },
           });
@@ -60,7 +65,7 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
         setError(message);
       }
     })();
-  }, [isLoaded, user?.id]);
+  }, [isLoaded]);
 
   return <>{children}</>;
 }

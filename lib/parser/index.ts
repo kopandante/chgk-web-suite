@@ -8,7 +8,6 @@ import {
   RE_NUM,
   RE_NUM_START,
   REGEXES_RU,
-  TOUR_NUMBERS_AS_WORDS,
   ZERO_PREFIXES,
 } from "./regexes";
 import {

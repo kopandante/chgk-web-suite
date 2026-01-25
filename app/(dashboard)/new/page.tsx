@@ -22,7 +22,6 @@ export default function NewPackagePage() {
 
   // Trello state (from Convex)
   const {
-    isLoading: trelloLoading,
     isConnected: trelloConnected,
     isReady: trelloReady,
     getToken,
@@ -349,8 +348,10 @@ export default function NewPackagePage() {
                   </button>
                 </div>
 
-                <label className="block">
-                  <span className="text-sm font-medium">Выберите доску</span>
+                <div>
+                  <label htmlFor="trello-board" className="text-sm font-medium">
+                    Выберите доску
+                  </label>
                   {boardsLoading ? (
                     <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -358,6 +359,7 @@ export default function NewPackagePage() {
                     </div>
                   ) : (
                     <select
+                      id="trello-board"
                       value={selectedBoard || ""}
                       onChange={(e) => setSelectedBoard(e.target.value || null)}
                       className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -370,7 +372,7 @@ export default function NewPackagePage() {
                       ))}
                     </select>
                   )}
-                </label>
+                </div>
 
                 <label className="flex items-center gap-2 text-sm">
                   <input

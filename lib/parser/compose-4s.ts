@@ -50,11 +50,11 @@ function formatElement(z: unknown): string {
         removeDoubleSeparators(z[0] as string) +
         SEP +
         "- " +
-        (z[1] as string[]).map((x) => removeDoubleSeparators(x)).join(SEP + "- ")
+        (z[1] as string[]).map((x) => removeDoubleSeparators(x)).join(`${SEP}- `)
       );
     }
     // Format: [items...] - list of items
-    return SEP + "- " + z.map((x) => removeDoubleSeparators(String(x))).join(SEP + "- ");
+    return `${SEP}- ${z.map((x) => removeDoubleSeparators(String(x))).join(`${SEP}- `)}`;
   }
 
   return String(z);
@@ -103,12 +103,12 @@ export function compose4s(structure: ParsedStructure, options: ComposeOptions = 
       if (q.number !== undefined) {
         if (!numbersHandling || numbersHandling === "default") {
           if (isZero(q.number)) {
-            tmp += "№ " + String(q.number) + SEP;
+            tmp += `№ ${String(q.number)}${SEP}`;
           } else if (firstNumber && Number(q.number) > 1) {
-            tmp += "№№ " + String(q.number) + SEP;
+            tmp += `№№ ${String(q.number)}${SEP}`;
           }
         } else if (numbersHandling === "all") {
-          tmp += "№ " + String(q.number) + SEP;
+          tmp += `№ ${String(q.number)}${SEP}`;
         }
         if (!isZero(q.number)) {
           firstNumber = false;

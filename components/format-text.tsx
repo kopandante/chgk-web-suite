@@ -3,6 +3,9 @@
 import { Fragment } from "react";
 import { QuestionImageById } from "./question-image";
 
+// Placeholder for escaped underscores (using a string that won't appear in text)
+const UNDERSCORE_PLACEHOLDER = "%%UNDERSCORE%%";
+
 /**
  * Parse formatting markers and return array of styled runs
  * Supports: _italic_, __bold__, ___underline___, ~strike~
@@ -16,11 +19,11 @@ function parseFormatting(text: string): React.ReactNode[] {
   const formatRegex = /(___|__|_|~)(.+?)\1/g;
 
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  const matches = text.matchAll(formatRegex);
 
-  while ((match = formatRegex.exec(text)) !== null) {
+  for (const match of matches) {
     // Add text before the match
-    if (match.index > lastIndex) {
+    if (match.index !== undefined && match.index > lastIndex) {
       result.push(
         <Fragment key={`plain-${keyCounter++}`}>{text.slice(lastIndex, match.index)}</Fragment>,
       );
@@ -50,7 +53,9 @@ function parseFormatting(text: string): React.ReactNode[] {
       );
     }
 
-    lastIndex = match.index + match[0].length;
+    if (match.index !== undefined) {
+      lastIndex = match.index + match[0].length;
+    }
   }
 
   // Add remaining text
@@ -62,10 +67,17 @@ function parseFormatting(text: string): React.ReactNode[] {
 }
 
 /**
- * Restore escaped underscores
+ * Restore escaped underscores with placeholder
+ */
+function protectUnderscores(text: string): string {
+  return text.replace(/\\_/g, UNDERSCORE_PLACEHOLDER);
+}
+
+/**
+ * Restore placeholder back to underscores
  */
 function restoreUnderscores(text: string): string {
-  return text.replace(/\\_/g, "\u0000UNDERSCORE\u0000");
+  return text.split(UNDERSCORE_PLACEHOLDER).join("_");
 }
 
 /**
@@ -73,7 +85,7 @@ function restoreUnderscores(text: string): string {
  */
 function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
   // First, protect escaped underscores
-  const protected_ = restoreUnderscores(text);
+  const protectedText = protectUnderscores(text);
 
   const result: React.ReactNode[] = [];
   let keyCounter = 0;
@@ -82,13 +94,15 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
   const combinedRegex = /(https?:\/\/[^\s\n]+)|\(img\s+([A-Za-z0-9_()-]+)\.[a-z]+\)/gi;
 
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  const matches = protectedText.matchAll(combinedRegex);
 
-  while ((match = combinedRegex.exec(protected_)) !== null) {
+  for (const match of matches) {
+    if (match.index === undefined) continue;
+
     // Add text before the match (with formatting)
     if (match.index > lastIndex) {
-      const segment = protected_.slice(lastIndex, match.index);
-      const formatted = parseFormatting(segment.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+      const segment = protectedText.slice(lastIndex, match.index);
+      const formatted = parseFormatting(restoreUnderscores(segment));
       result.push(<Fragment key={`seg-${keyCounter++}`}>{formatted}</Fragment>);
     }
 
@@ -120,14 +134,14 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
   }
 
   // Add remaining text (with formatting)
-  if (lastIndex < protected_.length) {
-    const segment = protected_.slice(lastIndex);
-    const formatted = parseFormatting(segment.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+  if (lastIndex < protectedText.length) {
+    const segment = protectedText.slice(lastIndex);
+    const formatted = parseFormatting(restoreUnderscores(segment));
     result.push(<Fragment key={`seg-${keyCounter++}`}>{formatted}</Fragment>);
   }
 
   if (result.length === 0) {
-    const formatted = parseFormatting(protected_.replace(/\u0000UNDERSCORE\u0000/g, "_"));
+    const formatted = parseFormatting(restoreUnderscores(protectedText));
     return formatted;
   }
 

@@ -161,8 +161,7 @@ function htmlToText(html: string, preserveFormatting = false): string {
     const hrefDecoded = href ? decodeURIComponent(href) : "";
 
     if (
-      href &&
-      href.startsWith("http") &&
+      href?.startsWith("http") &&
       !href.includes(linkTextClean) &&
       !hrefDecoded.includes(linkTextClean)
     ) {
@@ -260,11 +259,11 @@ function htmlToText(html: string, preserveFormatting = false): string {
         paddedCells.push(" ".repeat(leftPad) + text + " ".repeat(rightPad));
       }
 
-      markdownTable += "| " + paddedCells.join(" | ") + " |\n";
+      markdownTable += `| ${paddedCells.join(" | ")} |\n`;
 
       // Add separator after first row
       if (rowIdx === 0 && allRowData.length > 1) {
-        markdownTable += "|" + colWidths.map((w) => "-".repeat(w + 2)).join("|") + "|\n";
+        markdownTable += `|${colWidths.map((w) => "-".repeat(w + 2)).join("|")}|\n`;
       }
     }
 

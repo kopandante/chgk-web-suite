@@ -194,7 +194,7 @@ export function parseTxtFile(content: string): TxtQuestion[] {
       if (emptyLineCount === 1 && currentField !== null) {
         const currentValue = currentQuestion[currentField];
         if (currentValue !== null) {
-          currentQuestion[currentField] = (currentValue + "\n") as string;
+          currentQuestion[currentField] = `${currentValue}\n` as string;
         }
       }
 
@@ -231,7 +231,7 @@ export function parseTxtFile(content: string): TxtQuestion[] {
       // Append to current field (multiline value)
       const currentValue = currentQuestion[currentField];
       if (currentValue !== null) {
-        currentQuestion[currentField] = ((currentValue ? currentValue + "\n" : "") +
+        currentQuestion[currentField] = ((currentValue ? `${currentValue}\n` : "") +
           trimmedLine) as string;
       }
     } else if (!hasStartedQuestion) {
@@ -291,7 +291,7 @@ export function parseTxtSimple(content: string): TxtQuestion[] {
           question.question += (question.question ? "\n" : "") + line.trim();
         } else {
           const currentValue = question[currentField];
-          question[currentField] = ((currentValue ? currentValue + "\n" : "") +
+          question[currentField] = ((currentValue ? `${currentValue}\n` : "") +
             line.trim()) as string;
         }
       }

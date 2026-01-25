@@ -400,7 +400,7 @@ export default function ExportPackagePage() {
             <h2 className="text-lg font-semibold">Настройки PPTX</h2>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Опции</label>
+              <span className="text-sm font-medium">Опции</span>
               <div className="grid grid-cols-1 gap-2">
                 {[
                   { key: "showQuestionNumber", label: "Показывать номера вопросов" },
@@ -475,7 +475,7 @@ export default function ExportPackagePage() {
             <div className="space-y-4">
               {/* Channel selection */}
               <div>
-                <label className="text-sm font-medium">Канал</label>
+                <span className="text-sm font-medium">Канал</span>
 
                 {channels.length > 0 ? (
                   <div className="mt-2 space-y-2">
@@ -512,8 +512,11 @@ export default function ExportPackagePage() {
               </div>
 
               <div>
-                <label className="text-sm font-medium">Задержка между постами</label>
+                <label htmlFor="post-delay" className="text-sm font-medium">
+                  Задержка между постами
+                </label>
                 <select
+                  id="post-delay"
                   value={telegramOptions.postDelay}
                   onChange={(e) =>
                     setTelegramOptions((prev) => ({
@@ -533,7 +536,7 @@ export default function ExportPackagePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Опции</label>
+                <span className="text-sm font-medium">Опции</span>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { key: "useSpoilers", label: "Спойлеры для ответов" },
@@ -616,7 +619,7 @@ export default function ExportPackagePage() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium">Режим спойлеров</label>
+                <span className="text-sm font-medium">Режим спойлеров</span>
                 <div className="mt-2 flex gap-2 flex-wrap">
                   {[
                     { value: "none", label: "Без спойлеров" },
@@ -646,7 +649,7 @@ export default function ExportPackagePage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Включить в экспорт</label>
+                <span className="text-sm font-medium">Включить в экспорт</span>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { key: "includeAnswers", label: "Ответы" },

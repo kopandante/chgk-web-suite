@@ -47,6 +47,8 @@ export default function TrelloCallbackPage() {
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                role="img"
+                aria-label="Успех"
               >
                 <path
                   strokeLinecap="round"
@@ -68,6 +70,8 @@ export default function TrelloCallbackPage() {
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                role="img"
+                aria-label="Ошибка"
               >
                 <path
                   strokeLinecap="round"
