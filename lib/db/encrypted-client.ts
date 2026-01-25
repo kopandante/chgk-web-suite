@@ -49,6 +49,7 @@ export interface Image {
   content_type: string;
   filename: string | null;
   created_at: number;
+  data?: string; // Base64 encoded decrypted image data (populated for exports)
 }
 
 // Encrypted data types (stored in Convex)
@@ -238,6 +239,35 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// Load and decrypt images for export (populates `data` field)
+export async function loadImagesForExport(masterKey: CryptoKey, images: Image[]): Promise<Image[]> {
+  const results: Image[] = [];
+
+  for (const img of images) {
+    try {
+      const response = await fetch(img.url);
+      if (!response.ok) {
+        results.push(img);
+        continue;
+      }
+
+      const encryptedData = await response.arrayBuffer();
+      const decrypted = await decryptImageData(masterKey, encryptedData, img.iv);
+      const base64 = arrayBufferToBase64(decrypted);
+
+      results.push({
+        ...img,
+        data: base64,
+      });
+    } catch {
+      // Skip failed images
+      results.push(img);
+    }
+  }
+
+  return results;
+}
+
 // Encrypt functions
 export async function encryptPackageData(
   masterKey: CryptoKey,
@@ -313,10 +343,23 @@ export async function prepareTourCreate(
   };
 }
 
+// Input type for question creation (accepts both null and undefined)
+interface QuestionInput {
+  number?: number | null;
+  question: string;
+  answer?: string | null;
+  zachet?: string | null;
+  nezachet?: string | null;
+  comment?: string | null;
+  source?: string | null;
+  author?: string | null;
+  handout?: string | null;
+}
+
 // Helper to prepare question creation data
 export async function prepareQuestionCreate(
   masterKey: CryptoKey,
-  data: Omit<QuestionData, "number"> & { number?: number },
+  data: QuestionInput,
 ): Promise<{ encryptedData: string; iv: string }> {
   const questionData: QuestionData = {
     number: data.number ?? null,

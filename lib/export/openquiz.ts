@@ -1,6 +1,6 @@
 // Export to OpenQuiz JSON format
 
-import type { Package, Question, Tour } from "@/lib/db/schema";
+import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
 
 export interface OpenQuizExportOptions {
   includeComment?: boolean;

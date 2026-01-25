@@ -1,11 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowLeft, Download, Edit, Trash2 } from "lucide-react";
+import { useMutation as useConvexMutation, useQuery as useConvexQuery } from "convex/react";
+import { ArrowLeft, Download, Edit, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FormatSource, FormatText } from "@/components/format-text";
 import {
   AlertDialog,
@@ -18,32 +18,36 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
-  deletePackage,
-  getPackage,
-  getQuestionsByPackage,
-  getToursByPackage,
-} from "@/lib/db/client";
-import type { Question } from "@/lib/db/schema";
+  decryptPackage,
+  decryptQuestions,
+  decryptTours,
+  type Package,
+  type Question,
+  type Tour,
+} from "@/lib/db/encrypted-client";
+import { useEncryptionStore } from "@/stores/encryption";
 
 function QuestionCard({ question, index }: { question: Question; index: number }) {
   return (
-    <div className="rounded-lg border p-4 space-y-2">
-      <div className="text-sm text-muted-foreground font-medium">
+    <div className="library-card p-5 space-y-3">
+      <div className="text-sm text-primary font-medium small-caps">
         Вопрос {question.number ?? index + 1}
       </div>
       {question.handout && (
-        <div className="bg-muted/50 rounded-md p-3 text-sm">
+        <div className="bg-muted/50 rounded-lg p-4 text-sm border-l-2 border-accent">
           <span className="font-medium text-muted-foreground">Раздатка: </span>
           <FormatText text={question.handout} />
         </div>
       )}
-      <div className="whitespace-pre-wrap">
+      <div className="whitespace-pre-wrap text-base leading-relaxed">
         <FormatText text={question.question} />
       </div>
       {question.answer && (
-        <div className="pt-2 border-t">
-          <span className="text-sm font-medium text-muted-foreground">Ответ: </span>
+        <div className="pt-3 border-t">
+          <span className="text-sm font-medium text-primary">Ответ: </span>
           <FormatText text={question.answer} />
         </div>
       )}
@@ -88,7 +92,7 @@ function VirtualizedQuestionList({ questions }: { questions: Question[] }) {
   const items = virtualizer.getVirtualItems();
 
   return (
-    <div ref={parentRef} className="h-[calc(100vh-20rem)] overflow-auto">
+    <div ref={parentRef} className="h-[calc(100vh-22rem)] overflow-auto">
       <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
         {items.map((virtualItem) => {
           const question = questions[virtualItem.index];
@@ -114,76 +118,153 @@ function VirtualizedQuestionList({ questions }: { questions: Question[] }) {
 export default function PackagePage() {
   const params = useParams();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const packageId = params.id as string;
-  const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
+  const packageId = params.id as Id<"packages">;
+  const masterKey = useEncryptionStore((state) => state.masterKey);
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deletePackage(packageId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push("/packages");
-    },
-  });
+  const [pkg, setPkg] = useState<Package | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [tours, setTours] = useState<Tour[]>([]);
+  const [selectedTourId, setSelectedTourId] = useState<Id<"tours"> | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(true);
 
-  const { data: pkg, isLoading: pkgLoading } = useQuery({
-    queryKey: ["package", packageId],
-    queryFn: () => getPackage(packageId),
-  });
+  // Convex queries
+  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
+  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
+  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
 
-  const { data: questions } = useQuery({
-    queryKey: ["questions", packageId],
-    queryFn: () => getQuestionsByPackage(packageId),
-    enabled: !!pkg,
-  });
+  // Convex mutation for delete
+  const deletePackageMutation = useConvexMutation(api.packages.remove);
 
-  const { data: tours } = useQuery({
-    queryKey: ["tours", packageId],
-    queryFn: () => getToursByPackage(packageId),
-    enabled: !!pkg,
-  });
+  // Decrypt package
+  useEffect(() => {
+    if (!encryptedPkg || !masterKey) {
+      setPkg(null);
+      return;
+    }
+
+    decryptPackage(masterKey, encryptedPkg)
+      .then(setPkg)
+      .catch((err) => {
+        console.error("Failed to decrypt package:", err);
+        setPkg(null);
+      });
+  }, [encryptedPkg, masterKey]);
+
+  // Decrypt questions
+  useEffect(() => {
+    if (!encryptedQuestions || !masterKey) {
+      setQuestions([]);
+      return;
+    }
+
+    decryptQuestions(masterKey, encryptedQuestions)
+      .then((decrypted) => {
+        // Sort by order_num
+        const sorted = [...decrypted].sort((a, b) => a.order_num - b.order_num);
+        setQuestions(sorted);
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt questions:", err);
+        setQuestions([]);
+      });
+  }, [encryptedQuestions, masterKey]);
+
+  // Decrypt tours
+  useEffect(() => {
+    if (!encryptedTours || !masterKey) {
+      setTours([]);
+      setIsDecrypting(false);
+      return;
+    }
+
+    decryptTours(masterKey, encryptedTours)
+      .then((decrypted) => {
+        setTours(decrypted);
+        setIsDecrypting(false);
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt tours:", err);
+        setTours([]);
+        setIsDecrypting(false);
+      });
+  }, [encryptedTours, masterKey]);
+
+  const handleDelete = async () => {
+    await deletePackageMutation({ id: packageId });
+    router.push("/packages");
+  };
 
   const filteredQuestions = selectedTourId
-    ? questions?.filter((q) => q.tour_id === selectedTourId)
+    ? questions.filter((q) => q.tour_id === selectedTourId)
     : questions;
 
-  if (pkgLoading) {
-    return <div>Загрузка...</div>;
+  // Loading state
+  if (encryptedPkg === undefined || isDecrypting) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+        <p className="mt-4 font-medium">Загрузка пакета...</p>
+        <p className="text-sm">Расшифровка данных</p>
+      </div>
+    );
   }
 
+  // Not found
   if (!pkg) {
-    return <div>Пакет не найден</div>;
+    return (
+      <div className="max-w-2xl mx-auto text-center py-20">
+        <h1 className="text-2xl font-display font-bold">Пакет не найден</h1>
+        <p className="mt-2 text-muted-foreground">
+          Возможно, он был удален или у вас нет к нему доступа.
+        </p>
+        <Link
+          href="/packages"
+          className="mt-6 inline-flex items-center gap-2 btn-primary rounded-lg px-5 py-2.5 text-sm"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Вернуться к пакетам
+        </Link>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl mx-auto space-y-8">
       <Link
         href="/packages"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Все пакеты
       </Link>
 
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{pkg.title}</h1>
-          {pkg.editor && <p className="text-muted-foreground">{pkg.editor}</p>}
-          <p className="text-sm text-muted-foreground">
-            {pkg.question_count} вопросов{pkg.tour_count > 0 ? `, ${pkg.tour_count} туров` : ""}
+          <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight">
+            {pkg.title}
+          </h1>
+          {pkg.editor && <p className="mt-2 text-lg text-muted-foreground">{pkg.editor}</p>}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {pkg.question_count}{" "}
+            {pkg.question_count === 1 ? "вопрос" : pkg.question_count < 5 ? "вопроса" : "вопросов"}
+            {pkg.tour_count > 0 &&
+              `, ${pkg.tour_count} ${pkg.tour_count === 1 ? "тур" : pkg.tour_count < 5 ? "тура" : "туров"}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             href={`/${packageId}/edit`}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+            className="inline-flex items-center gap-2 btn-outline rounded-lg px-4 py-2.5 text-sm"
           >
             <Edit className="h-4 w-4" />
             Редактировать
           </Link>
           <Link
             href={`/${packageId}/export`}
-            className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+            className="inline-flex items-center gap-2 btn-primary rounded-lg px-4 py-2.5 text-sm"
           >
             <Download className="h-4 w-4" />
             Экспорт
@@ -192,7 +273,7 @@ export default function PackagePage() {
             <AlertDialogTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-md border border-destructive px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                className="inline-flex items-center gap-2 rounded-lg border border-destructive px-4 py-2.5 text-sm font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
               >
                 <Trash2 className="h-4 w-4" />
                 Удалить
@@ -209,7 +290,7 @@ export default function PackagePage() {
               <AlertDialogFooter>
                 <AlertDialogCancel>Отмена</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => deleteMutation.mutate()}
+                  onClick={handleDelete}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   Удалить
@@ -221,14 +302,14 @@ export default function PackagePage() {
       </div>
 
       {/* Tours */}
-      {tours && tours.length > 0 && (
+      {tours.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Туры</h2>
+          <h2 className="text-lg font-display font-semibold">Туры</h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setSelectedTourId(null)}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 selectedTourId === null
                   ? "bg-primary text-primary-foreground"
                   : "border hover:bg-accent"
@@ -241,7 +322,7 @@ export default function PackagePage() {
                 type="button"
                 key={tour.id}
                 onClick={() => setSelectedTourId(tour.id)}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   selectedTourId === tour.id
                     ? "bg-primary text-primary-foreground"
                     : "border hover:bg-accent"
@@ -255,13 +336,26 @@ export default function PackagePage() {
       )}
 
       {/* Questions */}
-      {filteredQuestions && filteredQuestions.length > 0 && (
+      {filteredQuestions.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-display font-semibold">
             Вопросы ({filteredQuestions.length}
-            {selectedTourId && questions ? ` из ${questions.length}` : ""})
+            {selectedTourId && questions.length > 0 ? ` из ${questions.length}` : ""})
           </h2>
           <VirtualizedQuestionList questions={filteredQuestions} />
+        </div>
+      )}
+
+      {filteredQuestions.length === 0 && !isDecrypting && (
+        <div className="text-center py-12 text-muted-foreground">
+          <p>В этом пакете пока нет вопросов</p>
+          <Link
+            href={`/${packageId}/edit`}
+            className="mt-4 inline-flex items-center gap-2 btn-outline rounded-lg px-4 py-2 text-sm"
+          >
+            <Edit className="h-4 w-4" />
+            Добавить вопросы
+          </Link>
         </div>
       )}
     </div>

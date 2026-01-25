@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import type { Id } from "@/convex/_generated/dataModel";
 import { QuestionImageById } from "./question-image";
 
 // Placeholder for escaped underscores (using a string that won't appear in text)
@@ -124,7 +125,7 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
       result.push(
         <QuestionImageById
           key={`img-${keyCounter++}`}
-          imageId={match[2]}
+          imageId={match[2] as Id<"images">}
           className="my-2 max-w-md"
         />,
       );

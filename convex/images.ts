@@ -117,6 +117,46 @@ export const remove = mutation({
   },
 });
 
+export const listByPackage = query({
+  args: { packageId: v.id("packages") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    // Verify package ownership
+    const pkg = await ctx.db.get(args.packageId);
+    if (!pkg || pkg.userId !== identity.subject) {
+      return [];
+    }
+
+    // Get all questions for this package
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("by_package", (q) => q.eq("packageId", args.packageId))
+      .collect();
+
+    // Get all images for these questions
+    const allImages = [];
+    for (const question of questions) {
+      const images = await ctx.db
+        .query("images")
+        .withIndex("by_question", (q) => q.eq("questionId", question._id))
+        .collect();
+
+      for (const image of images) {
+        allImages.push({
+          ...image,
+          url: await ctx.storage.getUrl(image.storageId),
+        });
+      }
+    }
+
+    return allImages;
+  },
+});
+
 export const removeByQuestion = mutation({
   args: { questionId: v.id("questions") },
   handler: async (ctx, args) => {

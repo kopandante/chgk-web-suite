@@ -16,22 +16,40 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, GripVertical, Plus, Save, Trash2 } from "lucide-react";
+import { useMutation as useConvexMutation, useQuery as useConvexQuery } from "convex/react";
+import { ArrowLeft, GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
-  createQuestion,
-  deleteQuestion,
-  getPackage,
-  getQuestionsByPackage,
-  getToursByPackage,
-  updatePackage,
-  updateQuestion,
-} from "@/lib/db/client";
-import type { QuestionFormData } from "@/lib/validation/schemas";
+  decryptPackage,
+  decryptQuestions,
+  decryptTours,
+  type Package,
+  preparePackageCreate,
+  prepareQuestionCreate,
+  type Question,
+  type Tour,
+} from "@/lib/db/encrypted-client";
+import { useEncryptionStore } from "@/stores/encryption";
+
+interface QuestionFormData {
+  id: string;
+  number: number | null;
+  question: string;
+  answer: string | null;
+  zachet: string | null;
+  nezachet: string | null;
+  comment: string | null;
+  source: string | null;
+  author: string | null;
+  handout: string | null;
+  isNew?: boolean;
+  isDeleted?: boolean;
+}
 
 interface SortableItemProps {
   id: string;
@@ -68,8 +86,13 @@ function SortableItem({ id, children }: SortableItemProps) {
 
 export default function EditPackagePage() {
   const params = useParams();
-  const packageId = params.id as string;
-  const queryClient = useQueryClient();
+  const packageId = params.id as Id<"packages">;
+  const masterKey = useEncryptionStore((state) => state.masterKey);
+
+  const [pkg, setPkg] = useState<Package | null>(null);
+  const [dbQuestions, setDbQuestions] = useState<Question[]>([]);
+  const [tours, setTours] = useState<Tour[]>([]);
+  const [isDecrypting, setIsDecrypting] = useState(true);
 
   const [title, setTitle] = useState("");
   const [editor, setEditor] = useState("");
@@ -78,7 +101,19 @@ export default function EditPackagePage() {
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
   const [hasChanges, setHasChanges] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<{ title?: string; questions?: Record<string, string> }>({});
+
+  // Convex queries
+  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
+  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
+  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
+
+  // Convex mutations
+  const updatePackageMutation = useConvexMutation(api.packages.update);
+  const createQuestionMutation = useConvexMutation(api.questions.create);
+  const updateQuestionMutation = useConvexMutation(api.questions.update);
+  const deleteQuestionMutation = useConvexMutation(api.questions.remove);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -87,22 +122,55 @@ export default function EditPackagePage() {
     }),
   );
 
-  const { data: pkg, isLoading: pkgLoading } = useQuery({
-    queryKey: ["package", packageId],
-    queryFn: () => getPackage(packageId),
-  });
+  // Decrypt package
+  useEffect(() => {
+    if (!encryptedPkg || !masterKey) {
+      setPkg(null);
+      return;
+    }
 
-  const { data: dbQuestions, isLoading: questionsLoading } = useQuery({
-    queryKey: ["questions", packageId],
-    queryFn: () => getQuestionsByPackage(packageId),
-    enabled: !!pkg,
-  });
+    decryptPackage(masterKey, encryptedPkg)
+      .then(setPkg)
+      .catch((err) => {
+        console.error("Failed to decrypt package:", err);
+        setPkg(null);
+      });
+  }, [encryptedPkg, masterKey]);
 
-  const { data: tours } = useQuery({
-    queryKey: ["tours", packageId],
-    queryFn: () => getToursByPackage(packageId),
-    enabled: !!pkg,
-  });
+  // Decrypt questions
+  useEffect(() => {
+    if (!encryptedQuestions || !masterKey) {
+      setDbQuestions([]);
+      return;
+    }
+
+    decryptQuestions(masterKey, encryptedQuestions)
+      .then(setDbQuestions)
+      .catch((err) => {
+        console.error("Failed to decrypt questions:", err);
+        setDbQuestions([]);
+      });
+  }, [encryptedQuestions, masterKey]);
+
+  // Decrypt tours
+  useEffect(() => {
+    if (!encryptedTours || !masterKey) {
+      setTours([]);
+      setIsDecrypting(false);
+      return;
+    }
+
+    decryptTours(masterKey, encryptedTours)
+      .then((decrypted) => {
+        setTours(decrypted);
+        setIsDecrypting(false);
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt tours:", err);
+        setTours([]);
+        setIsDecrypting(false);
+      });
+  }, [encryptedTours, masterKey]);
 
   // Initialize form when data loads
   useEffect(() => {
@@ -110,8 +178,10 @@ export default function EditPackagePage() {
       setTitle(pkg.title);
       setEditor(pkg.editor || "");
       setDate(pkg.date || "");
+      // Sort questions by order_num before initializing
+      const sortedQuestions = [...dbQuestions].sort((a, b) => a.order_num - b.order_num);
       setQuestions(
-        dbQuestions.map((q) => ({
+        sortedQuestions.map((q) => ({
           id: q.id,
           number: q.number,
           question: q.question,
@@ -149,22 +219,34 @@ export default function EditPackagePage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      await updatePackage(packageId, {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate() || !masterKey) return;
+
+    setIsSaving(true);
+
+    try {
+      // Update package
+      const packageData = await preparePackageCreate(masterKey, {
         title,
-        editor: editor || null,
-        date: date || null,
+        editor: editor || undefined,
+        date: date || undefined,
       });
 
+      await updatePackageMutation({
+        id: packageId,
+        encryptedData: packageData.encryptedData,
+        iv: packageData.iv,
+      });
+
+      // Process questions
       for (const q of questions) {
-        if (q.isDeleted) {
-          await deleteQuestion(q.id);
-        } else if (q.isNew) {
-          await createQuestion({
-            package_id: packageId,
-            tour_id: tours?.[0]?.id || undefined,
-            order_num: questions.indexOf(q),
+        if (q.isDeleted && !q.isNew) {
+          // Delete existing question
+          await deleteQuestionMutation({ id: q.id as Id<"questions"> });
+        } else if (q.isNew && !q.isDeleted) {
+          // Create new question
+          const questionData = await prepareQuestionCreate(masterKey, {
             number: q.number ?? undefined,
             question: q.question,
             answer: q.answer ?? undefined,
@@ -175,37 +257,44 @@ export default function EditPackagePage() {
             author: q.author ?? undefined,
             handout: q.handout ?? undefined,
           });
-        } else {
-          await updateQuestion(q.id, {
-            number: q.number,
+
+          await createQuestionMutation({
+            packageId,
+            tourId: tours?.[0]?.id,
+            encryptedData: questionData.encryptedData,
+            iv: questionData.iv,
+            orderNum: questions.indexOf(q),
+          });
+        } else if (!q.isDeleted) {
+          // Update existing question
+          const questionData = await prepareQuestionCreate(masterKey, {
+            number: q.number ?? undefined,
             question: q.question,
-            answer: q.answer,
-            zachet: q.zachet,
-            nezachet: q.nezachet,
-            comment: q.comment,
-            source: q.source,
-            author: q.author,
-            handout: q.handout,
+            answer: q.answer ?? undefined,
+            zachet: q.zachet ?? undefined,
+            nezachet: q.nezachet ?? undefined,
+            comment: q.comment ?? undefined,
+            source: q.source ?? undefined,
+            author: q.author ?? undefined,
+            handout: q.handout ?? undefined,
+          });
+
+          await updateQuestionMutation({
+            id: q.id as Id<"questions">,
+            encryptedData: questionData.encryptedData,
+            iv: questionData.iv,
+            orderNum: questions.indexOf(q),
           });
         }
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["package", packageId] });
-      queryClient.invalidateQueries({ queryKey: ["questions", packageId] });
-      queryClient.invalidateQueries({ queryKey: ["packages"] });
-      setHasChanges(false);
-      toast.success("Изменения сохранены");
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Ошибка сохранения");
-    },
-  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validate()) {
-      saveMutation.mutate();
+      setHasChanges(false);
+      setInitialized(false); // Re-initialize from fresh data
+      toast.success("Изменения сохранены");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Ошибка сохранения");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -291,12 +380,32 @@ export default function EditPackagePage() {
     setHasChanges(true);
   };
 
-  if (pkgLoading || questionsLoading) {
-    return <div>Загрузка...</div>;
+  // Loading state
+  if (encryptedPkg === undefined || isDecrypting) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+        <p className="mt-4 font-medium">Загрузка пакета...</p>
+        <p className="text-sm">Расшифровка данных</p>
+      </div>
+    );
   }
 
+  // Not found
   if (!pkg) {
-    return <div>Пакет не найден</div>;
+    return (
+      <div className="max-w-2xl mx-auto text-center py-20">
+        <h1 className="text-2xl font-display font-bold">Пакет не найден</h1>
+        <Link
+          href="/packages"
+          className="mt-6 inline-flex items-center gap-2 btn-primary rounded-lg px-5 py-2.5 text-sm"
+        >
+          Вернуться к пакетам
+        </Link>
+      </div>
+    );
   }
 
   const visibleQuestions = questions.filter((q) => !q.isDeleted);
@@ -552,11 +661,11 @@ export default function EditPackagePage() {
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
             <button
               type="submit"
-              disabled={saveMutation.isPending}
+              disabled={isSaving}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary/90 disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
-              {saveMutation.isPending ? "Сохранение..." : "Сохранить изменения"}
+              {isSaving ? "Сохранение..." : "Сохранить изменения"}
             </button>
           </div>
         )}

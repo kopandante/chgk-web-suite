@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useQuery as useConvexQuery } from "convex/react";
 import {
   ArrowLeft,
   Braces,
@@ -18,13 +19,20 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useTelegramChannels } from "@/hooks/use-telegram-channel";
 import {
-  getImagesByPackage,
-  getPackage,
-  getQuestionsByPackage,
-  getToursByPackage,
-} from "@/lib/db/client";
+  decryptPackage,
+  decryptQuestions,
+  decryptTours,
+  type Image,
+  loadImagesForExport,
+  mapImages,
+  type Package,
+  type Question,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 import { downloadChgkDbFile, exportToChgkDb } from "@/lib/export/chgk-db";
 import { type DocxExportOptions, downloadBlob, exportToDocx } from "@/lib/export/docx";
 import { downloadOpenQuizFile } from "@/lib/export/openquiz";
@@ -33,12 +41,21 @@ import { downloadRedditFile, exportToReddit } from "@/lib/export/reddit";
 import { exportToTelegram, type TelegramExportOptions } from "@/lib/export/telegram";
 import type { ParsedStructure } from "@/lib/parser";
 import { compose4s } from "@/lib/parser/docx";
+import { useEncryptionStore } from "@/stores/encryption";
 
 type ExportFormat = "docx" | "pptx" | "telegram" | "4s" | "chgk-db" | "openquiz" | "reddit";
 
 export default function ExportPackagePage() {
   const params = useParams();
-  const packageId = params.id as string;
+  const packageId = params.id as Id<"packages">;
+  const masterKey = useEncryptionStore((state) => state.masterKey);
+
+  const [pkg, setPkg] = useState<Package | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [tours, setTours] = useState<Tour[]>([]);
+  const [images, setImages] = useState<Image[]>([]);
+  const [isDecrypting, setIsDecrypting] = useState(true);
+
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat | null>(null);
   const [docxOptions, setDocxOptions] = useState<DocxExportOptions>({
     spoilerMode: "none",
@@ -69,13 +86,82 @@ export default function ExportPackagePage() {
     total: number;
   } | null>(null);
 
+  // Convex queries
+  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
+  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
+  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
+  const encryptedImages = useConvexQuery(api.images.listByPackage, { packageId });
+
+  // Decrypt package
+  useEffect(() => {
+    if (!encryptedPkg || !masterKey) {
+      setPkg(null);
+      return;
+    }
+
+    decryptPackage(masterKey, encryptedPkg)
+      .then(setPkg)
+      .catch((err) => {
+        console.error("Failed to decrypt package:", err);
+        setPkg(null);
+      });
+  }, [encryptedPkg, masterKey]);
+
+  // Decrypt questions
+  useEffect(() => {
+    if (!encryptedQuestions || !masterKey) {
+      setQuestions([]);
+      return;
+    }
+
+    decryptQuestions(masterKey, encryptedQuestions)
+      .then((decrypted) => {
+        // Sort by order_num
+        const sorted = [...decrypted].sort((a, b) => a.order_num - b.order_num);
+        setQuestions(sorted);
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt questions:", err);
+        setQuestions([]);
+      });
+  }, [encryptedQuestions, masterKey]);
+
+  // Decrypt tours
+  useEffect(() => {
+    if (!encryptedTours || !masterKey) {
+      setTours([]);
+      setIsDecrypting(false);
+      return;
+    }
+
+    decryptTours(masterKey, encryptedTours)
+      .then((decrypted) => {
+        setTours(decrypted);
+        setIsDecrypting(false);
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt tours:", err);
+        setTours([]);
+        setIsDecrypting(false);
+      });
+  }, [encryptedTours, masterKey]);
+
+  // Map images
+  useEffect(() => {
+    if (!encryptedImages) {
+      setImages([]);
+      return;
+    }
+    setImages(mapImages(encryptedImages));
+  }, [encryptedImages]);
+
   // Convex real-time channels state
   const { channels } = useTelegramChannels();
 
-  // Выбранный канал (с fallback на первый)
+  // Selected channel (with fallback to first)
   const selectedChannel = channels.find((c) => c.channelId === selectedChannelId) ?? channels[0];
 
-  // Предупреждение при уходе во время экспорта в Telegram
+  // Warning when leaving during Telegram export
   useEffect(() => {
     if (!telegramProgress) return;
 
@@ -88,35 +174,14 @@ export default function ExportPackagePage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [telegramProgress]);
 
-  const { data: pkg } = useQuery({
-    queryKey: ["package", packageId],
-    queryFn: () => getPackage(packageId),
-  });
-
-  const { data: questions } = useQuery({
-    queryKey: ["questions", packageId],
-    queryFn: () => getQuestionsByPackage(packageId),
-    enabled: !!pkg,
-  });
-
-  const { data: tours } = useQuery({
-    queryKey: ["tours", packageId],
-    queryFn: () => getToursByPackage(packageId),
-    enabled: !!pkg,
-  });
-
-  const { data: images } = useQuery({
-    queryKey: ["images", packageId],
-    queryFn: () => getImagesByPackage(packageId),
-    enabled: !!pkg,
-  });
-
   const exportDocxMutation = useMutation({
     mutationFn: async () => {
-      if (!pkg || !questions || !tours || !images) {
+      if (!pkg || !questions || !tours || !masterKey) {
         throw new Error("Data not loaded");
       }
-      const blob = await exportToDocx(pkg, questions, tours, images, docxOptions);
+      // Load and decrypt images for export
+      const loadedImages = await loadImagesForExport(masterKey, images);
+      const blob = await exportToDocx(pkg, questions, tours, loadedImages, docxOptions);
       const filename = `${pkg.title.replace(/[^\w\s-]/g, "")}.docx`;
       downloadBlob(blob, filename);
     },
@@ -195,10 +260,12 @@ export default function ExportPackagePage() {
 
   const exportPptxMutation = useMutation({
     mutationFn: async () => {
-      if (!pkg || !questions || !tours || !images) {
+      if (!pkg || !questions || !tours || !masterKey) {
         throw new Error("Data not loaded");
       }
-      const blob = await exportToPptx(pkg, questions, tours, images, pptxOptions);
+      // Load and decrypt images for export
+      const loadedImages = await loadImagesForExport(masterKey, images);
+      const blob = await exportToPptx(pkg, questions, tours, loadedImages, pptxOptions);
       const filename = `${pkg.title.replace(/[^\w\s-]/g, "")}.pptx`;
       downloadBlob(blob, filename);
     },
@@ -373,6 +440,34 @@ export default function ExportPackagePage() {
     exportChgkDbMutation.isPending ||
     exportOpenQuizMutation.isPending ||
     exportRedditMutation.isPending;
+
+  // Loading state
+  if (encryptedPkg === undefined || isDecrypting) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+        <p className="mt-4 font-medium">Загрузка пакета...</p>
+        <p className="text-sm">Расшифровка данных</p>
+      </div>
+    );
+  }
+
+  // Not found
+  if (!pkg) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-20">
+        <h1 className="text-2xl font-display font-bold">Пакет не найден</h1>
+        <Link
+          href="/packages"
+          className="mt-6 inline-flex items-center gap-2 btn-primary rounded-lg px-5 py-2.5 text-sm"
+        >
+          Вернуться к пакетам
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

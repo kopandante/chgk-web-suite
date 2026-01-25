@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { formatQuestionForTelegram, toTelegramHtml } from "@/lib/export/telegram";
-import type { Question } from "@/lib/db/schema";
+import type { Question } from "@/lib/db/encrypted-client";
+import type { Id } from "@/convex/_generated/dataModel";
 
 describe("Telegram HTML conversion", () => {
   it("converts italic markers to HTML", () => {
@@ -40,8 +41,8 @@ describe("Telegram HTML conversion", () => {
 
 describe("Question formatting for Telegram", () => {
   const mockQuestion: Question = {
-    id: "test-1",
-    package_id: "pkg-1",
+    id: "test-1" as Id<"questions">,
+    package_id: "pkg-1" as Id<"packages">,
     tour_id: null,
     order_num: 0,
     number: 1,
@@ -54,7 +55,6 @@ describe("Question formatting for Telegram", () => {
     author: "Автор Вопроса",
     handout: null,
     created_at: Date.now(),
-    updated_at: Date.now(),
   };
 
   it("formats question with spoilers", () => {

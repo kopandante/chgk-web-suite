@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { shuffleQuestions, maybeShuffleQuestions } from "@/lib/export/utils";
-import type { Question } from "@/lib/db/schema";
+import type { Question } from "@/lib/db/encrypted-client";
+import type { Id } from "@/convex/_generated/dataModel";
 
 // Create mock questions for testing
 function createMockQuestions(count: number): Question[] {
   return Array.from({ length: count }, (_, i) => ({
-    id: `q${i + 1}`,
-    package_id: "pkg1",
+    id: `q${i + 1}` as Id<"questions">,
+    package_id: "pkg1" as Id<"packages">,
     tour_id: null,
     order_num: i,
     number: i + 1,

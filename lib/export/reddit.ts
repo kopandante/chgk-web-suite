@@ -1,7 +1,7 @@
 // Export to Reddit Markdown format
 // Converts questions to Reddit-compatible markdown with spoiler tags
 
-import type { Package, Question, Tour } from "@/lib/db/schema";
+import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
 
 export interface RedditExportOptions {
   // Include fields

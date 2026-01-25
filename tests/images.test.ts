@@ -14,7 +14,7 @@ beforeAll(() => {
 const IMG_PLACEHOLDER_REGEX = /\(img\s+[A-Za-z0-9_()-]+\.[a-z]+\)/gi;
 
 describe("DOCX images extraction", () => {
-  const testFile = "/Users/evgeniykan/Documents/pet/chgksuite/tests/Shkolny_Chemp_Estonii-2014_(48v).docx";
+  const testFile = "./tests/fixtures/Shkolny_Chemp_Estonii-2014_(48v).docx";
   const testFilename = basename(testFile);
   const testPrefix = testFilename.replace(/\.docx$/i, "");
 

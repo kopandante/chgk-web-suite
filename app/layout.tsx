@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Playfair_Display, Source_Sans_3 } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const inter = Inter({
+const playfair = Playfair_Display({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-inter",
+  variable: "--font-display",
+  display: "swap",
+});
+
+const sourceSans = Source_Sans_3({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-body",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "CHGK Web Suite",
-  description: "Веб-приложение для работы с пакетами ЧГК",
+  description: "Веб-приложение для работы с пакетами ЧГК с E2E шифрованием",
 };
 
 export default function RootLayout({
@@ -20,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${playfair.variable} ${sourceSans.variable} antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -1,6 +1,6 @@
 // Export to db.chgk.info text format
 
-import type { Package, Question, Tour } from "@/lib/db/schema";
+import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface ChgkDbExportOptions extends RandomizeOptions {

@@ -10,9 +10,19 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
-import { base64ToUint8Array } from "@/lib/db/client";
-import type { Image, Package, Question, Tour } from "@/lib/db/schema";
+import type { Image, Package, Question, Tour } from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
+
+// Convert base64 string to Uint8Array
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
 
 export type SpoilerMode = "none" | "whiten" | "pagebreak" | "dots";
 
@@ -304,7 +314,7 @@ export async function exportToDocx(
       const questionImages = extractImageIds(question.question);
       for (const imgId of questionImages) {
         const img = imageMap.get(imgId);
-        if (img) {
+        if (img?.data) {
           try {
             const imageData = base64ToUint8Array(img.data);
             children.push(

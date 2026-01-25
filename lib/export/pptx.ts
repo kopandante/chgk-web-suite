@@ -1,7 +1,7 @@
 // PPTX export using pptxgenjs library
 // Dynamic import to avoid SSR issues with Node.js modules
 
-import type { Image, Package, Question, Tour } from "@/lib/db/schema";
+import type { Image, Package, Question, Tour } from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface PptxExportOptions extends RandomizeOptions {
@@ -212,7 +212,7 @@ export async function exportToPptx(
         const questionImages = extractImageIds(question.question);
         for (const imgId of questionImages) {
           const img = imageMap.get(imgId);
-          if (img) {
+          if (img?.data) {
             try {
               const dataUrl = `data:${img.content_type};base64,${img.data}`;
 

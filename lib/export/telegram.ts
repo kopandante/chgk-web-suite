@@ -1,7 +1,7 @@
 // Telegram export using Bot API
 // Converts questions to Telegram HTML format with spoilers
 
-import type { Question } from "@/lib/db/schema";
+import type { Question } from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface TelegramExportOptions extends RandomizeOptions {

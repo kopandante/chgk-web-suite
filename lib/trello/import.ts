@@ -1,6 +1,12 @@
 // Import Trello boards as CHGK packages
+// This module now uses Convex for storage
 
-import { createPackage, createQuestion, createTour, saveDatabase } from "@/lib/db/client";
+import type { Id } from "@/convex/_generated/dataModel";
+import {
+  preparePackageCreate,
+  prepareQuestionCreate,
+  prepareTourCreate,
+} from "@/lib/db/encrypted-client";
 import { fetchBoardCards, fetchBoards, fetchLists, type TrelloBoard } from "./client";
 import { type ParsedPackage, parseCardsToTours } from "./parser";
 
@@ -12,9 +18,30 @@ export interface TrelloImportOptions {
 }
 
 export interface TrelloImportResult {
-  packageId: string;
+  packageId: Id<"packages">;
   questionCount: number;
   tourCount: number;
+}
+
+// Dependencies for Convex operations
+export interface ConvexDependencies {
+  masterKey: CryptoKey;
+  createPackage: (args: { encryptedData: string; iv: string }) => Promise<Id<"packages">>;
+  createTour: (args: {
+    packageId: Id<"packages">;
+    encryptedData: string;
+    iv: string;
+    orderNum: number;
+  }) => Promise<Id<"tours">>;
+  createQuestionsBulk: (args: {
+    questions: Array<{
+      packageId: Id<"packages">;
+      tourId?: Id<"tours">;
+      encryptedData: string;
+      iv: string;
+      orderNum: number;
+    }>;
+  }) => Promise<Id<"questions">[]>;
 }
 
 /**
@@ -51,6 +78,7 @@ export async function fetchTrelloPackage(token: string, boardId: string): Promis
  */
 export async function importTrelloBoard(
   options: TrelloImportOptions,
+  deps: ConvexDependencies,
   onProgress?: (status: string) => void,
 ): Promise<TrelloImportResult> {
   onProgress?.("Загрузка доски...");
@@ -60,11 +88,16 @@ export async function importTrelloBoard(
 
   onProgress?.("Создание пакета...");
 
-  // Create package
-  const pkg = await createPackage({
+  // Create encrypted package
+  const packageData = await preparePackageCreate(deps.masterKey, {
     title: parsed.title,
     editor: parsed.editor || undefined,
     date: parsed.date || undefined,
+  });
+
+  const packageId = await deps.createPackage({
+    encryptedData: packageData.encryptedData,
+    iv: packageData.iv,
   });
 
   let questionCount = 0;
@@ -75,19 +108,30 @@ export async function importTrelloBoard(
     for (const tour of parsed.tours) {
       onProgress?.(`Импорт тура: ${tour.title}...`);
 
-      const tourRecord = await createTour({
-        package_id: pkg.id,
+      const tourData = await prepareTourCreate(deps.masterKey, {
         title: tour.title,
-        order_num: tourCount,
+      });
+
+      const tourId = await deps.createTour({
+        packageId,
+        encryptedData: tourData.encryptedData,
+        iv: tourData.iv,
+        orderNum: tourCount,
       });
       tourCount++;
 
+      // Prepare all questions for this tour
+      const questionsToCreate: Array<{
+        packageId: Id<"packages">;
+        tourId: Id<"tours">;
+        encryptedData: string;
+        iv: string;
+        orderNum: number;
+      }> = [];
+
       for (let i = 0; i < tour.questions.length; i++) {
         const q = tour.questions[i];
-        await createQuestion({
-          package_id: pkg.id,
-          tour_id: tourRecord.id,
-          order_num: questionCount,
+        const questionData = await prepareQuestionCreate(deps.masterKey, {
           number: q.number ?? undefined,
           question: q.question,
           answer: q.answer ?? undefined,
@@ -98,21 +142,39 @@ export async function importTrelloBoard(
           author: q.author ?? undefined,
           handout: q.handout ?? undefined,
         });
-        questionCount++;
+
+        questionsToCreate.push({
+          packageId,
+          tourId,
+          encryptedData: questionData.encryptedData,
+          iv: questionData.iv,
+          orderNum: questionCount + i,
+        });
+      }
+
+      // Create all questions for this tour in bulk
+      if (questionsToCreate.length > 0) {
+        await deps.createQuestionsBulk({ questions: questionsToCreate });
+        questionCount += questionsToCreate.length;
       }
     }
   } else {
     // Import as flat list
     const allQuestions = parsed.tours.flatMap((t) => t.questions);
 
+    onProgress?.(`Импорт ${allQuestions.length} вопросов...`);
+
+    const questionsToCreate: Array<{
+      packageId: Id<"packages">;
+      tourId?: Id<"tours">;
+      encryptedData: string;
+      iv: string;
+      orderNum: number;
+    }> = [];
+
     for (let i = 0; i < allQuestions.length; i++) {
       const q = allQuestions[i];
-      onProgress?.(`Импорт вопроса ${i + 1}/${allQuestions.length}...`);
-
-      await createQuestion({
-        package_id: pkg.id,
-        tour_id: undefined,
-        order_num: i,
+      const questionData = await prepareQuestionCreate(deps.masterKey, {
         number: q.number ?? i + 1,
         question: q.question,
         answer: q.answer ?? undefined,
@@ -123,14 +185,24 @@ export async function importTrelloBoard(
         author: q.author ?? undefined,
         handout: q.handout ?? undefined,
       });
-      questionCount++;
+
+      questionsToCreate.push({
+        packageId,
+        encryptedData: questionData.encryptedData,
+        iv: questionData.iv,
+        orderNum: i,
+      });
+    }
+
+    // Create all questions in bulk
+    if (questionsToCreate.length > 0) {
+      await deps.createQuestionsBulk({ questions: questionsToCreate });
+      questionCount = questionsToCreate.length;
     }
   }
 
-  await saveDatabase();
-
   return {
-    packageId: pkg.id,
+    packageId,
     questionCount,
     tourCount,
   };

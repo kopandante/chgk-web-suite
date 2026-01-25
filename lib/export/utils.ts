@@ -1,6 +1,6 @@
 // Export utilities
 
-import type { Question } from "@/lib/db/schema";
+import type { Question } from "@/lib/db/encrypted-client";
 
 /**
  * Seeded random number generator using Mulberry32 algorithm
