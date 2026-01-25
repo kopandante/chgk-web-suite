@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useEffectEvent } from "react";
 import { api } from "@/convex/_generated/api";
 
 export function useTelegramChannels() {
@@ -49,14 +49,20 @@ export function useTelegramChannels() {
   }, [clerkUserId, cancelLinkingMutation]);
 
   // Автоматически сохранять канал при успешной верификации
-  useEffect(() => {
-    if (linkStatus?.status === "verified" && clerkUserId) {
+  const onVerified = useEffectEvent(() => {
+    if (clerkUserId) {
       saveChannelMutation({ clerkUserId });
     }
-  }, [linkStatus?.status, clerkUserId, saveChannelMutation]);
+  });
+
+  useEffect(() => {
+    if (linkStatus?.status === "verified") {
+      onVerified();
+    }
+  }, [linkStatus?.status]);
 
   return {
-    isLoading: !isUserLoaded || channels === undefined,
+    isLoading: !isUserLoaded,
     isAuthenticated: !!clerkUserId,
     channels: channels ?? [],
     linkStatus,

@@ -1,20 +1,16 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, FileText, Loader2, Trello, Upload } from "lucide-react";
+import { ArrowLeft, Check, FileText, HelpCircle, Loader2, Trello, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useTrello } from "@/hooks/use-trello";
 import { createPackage, importParsedPackage } from "@/lib/db/client";
-import type { ParsedStructure, Question as ParsedQuestion } from "@/lib/parser";
+import type { Question as ParsedQuestion, ParsedStructure } from "@/lib/parser";
 import { type DocxImage, parseDocx } from "@/lib/parser/docx";
 import { parseTxtFile } from "@/lib/parser/txt";
-import {
-  clearTrelloToken,
-  getTrelloToken,
-  openTrelloAuth,
-  testTrelloConnection,
-} from "@/lib/trello/client";
+import { openTrelloAuth, testTrelloConnection } from "@/lib/trello/client";
 import { getTrelloBoards, importTrelloBoard } from "@/lib/trello/import";
 
 export default function NewPackagePage() {
@@ -24,29 +20,37 @@ export default function NewPackagePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Trello state
+  // Trello state (from Convex)
+  const {
+    isLoading: trelloLoading,
+    isConnected: trelloConnected,
+    isReady: trelloReady,
+    getToken,
+    saveToken,
+    deleteToken,
+  } = useTrello();
+
   const [showTrello, setShowTrello] = useState(false);
-  const [trelloConnected, setTrelloConnected] = useState(false);
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const [listsAsTours, setListsAsTours] = useState(true);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-
-  // Check Trello connection on mount
-  useEffect(() => {
-    const token = getTrelloToken();
-    if (token) {
-      testTrelloConnection().then((result) => {
-        setTrelloConnected(result.ok);
-      });
-    }
-  }, []);
+  const [trelloToken, setTrelloToken] = useState<string | null>(null);
 
   // Fetch Trello boards when connected
   const { data: trelloBoards, isLoading: boardsLoading } = useQuery({
-    queryKey: ["trello-boards"],
-    queryFn: getTrelloBoards,
-    enabled: trelloConnected && showTrello,
+    queryKey: ["trello-boards", trelloToken],
+    queryFn: () => (trelloToken ? getTrelloBoards(trelloToken) : Promise.resolve([])),
+    enabled: trelloConnected && showTrello && !!trelloToken,
   });
+
+  // Load decrypted token when Trello section is opened
+  const handleShowTrello = async () => {
+    setShowTrello(!showTrello);
+    if (!showTrello && trelloConnected && !trelloToken) {
+      const token = await getToken();
+      setTrelloToken(token);
+    }
+  };
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -110,10 +114,10 @@ export default function NewPackagePage() {
 
   const trelloImportMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedBoard) throw new Error("Board not selected");
+      if (!selectedBoard || !trelloToken) throw new Error("Board not selected or not authorized");
       setImportStatus("Начинаем импорт...");
       const result = await importTrelloBoard(
-        { boardId: selectedBoard, listsAsTours },
+        { token: trelloToken, boardId: selectedBoard, listsAsTours },
         setImportStatus,
       );
       return result;
@@ -130,20 +134,36 @@ export default function NewPackagePage() {
   });
 
   const handleTrelloConnect = async () => {
+    if (!trelloReady) {
+      setError("Шифрование не готово");
+      return;
+    }
     try {
-      await openTrelloAuth();
-      setTrelloConnected(true);
-      queryClient.invalidateQueries({ queryKey: ["trello-boards"] });
+      const token = await openTrelloAuth();
+      // Verify token works
+      const result = await testTrelloConnection(token);
+      if (result.ok) {
+        // Save encrypted token to Convex
+        await saveToken(token);
+        setTrelloToken(token);
+        queryClient.invalidateQueries({ queryKey: ["trello-boards"] });
+      } else {
+        setError(result.error || "Не удалось подключить Trello");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка авторизации");
     }
   };
 
-  const handleTrelloDisconnect = () => {
-    clearTrelloToken();
-    setTrelloConnected(false);
-    setSelectedBoard(null);
-    queryClient.removeQueries({ queryKey: ["trello-boards"] });
+  const handleTrelloDisconnect = async () => {
+    try {
+      await deleteToken();
+      setTrelloToken(null);
+      setSelectedBoard(null);
+      queryClient.removeQueries({ queryKey: ["trello-boards"] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка отключения");
+    }
   };
 
   const handleFile = useCallback(
@@ -248,11 +268,47 @@ export default function NewPackagePage() {
         )}
       </section>
 
+      {/* Format hint */}
+      <details className="rounded-lg border p-4 text-sm">
+        <summary className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
+          <HelpCircle className="h-4 w-4" />
+          <span>Поддерживаемые форматы файлов</span>
+        </summary>
+        <div className="mt-3 space-y-3 text-muted-foreground">
+          <div>
+            <p className="font-medium text-foreground">DOCX (Microsoft Word)</p>
+            <p>Парсер автоматически распознает структуру вопросов по маркерам:</p>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              <li>
+                <code className="text-xs bg-muted px-1 rounded">Вопрос 1:</code> или{" "}
+                <code className="text-xs bg-muted px-1 rounded">1.</code> — номер вопроса
+              </li>
+              <li>
+                <code className="text-xs bg-muted px-1 rounded">Ответ:</code> — правильный ответ
+              </li>
+              <li>
+                <code className="text-xs bg-muted px-1 rounded">Зачёт:</code> — альтернативные
+                ответы
+              </li>
+              <li>
+                <code className="text-xs bg-muted px-1 rounded">Комментарий:</code>,{" "}
+                <code className="text-xs bg-muted px-1 rounded">Источник:</code>,{" "}
+                <code className="text-xs bg-muted px-1 rounded">Автор:</code>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium text-foreground">TXT (простой текст)</p>
+            <p>Такой же формат с маркерами полей.</p>
+          </div>
+        </div>
+      </details>
+
       {/* Trello import */}
       <div className="rounded-lg border p-4">
         <button
           type="button"
-          onClick={() => setShowTrello(!showTrello)}
+          onClick={handleShowTrello}
           className="flex items-center gap-2 w-full text-left"
         >
           <Trello className="h-5 w-5 text-[#0079bf]" />
@@ -265,7 +321,8 @@ export default function NewPackagePage() {
             {!trelloConnected ? (
               <div className="text-center py-4">
                 <p className="text-sm text-muted-foreground mb-3">
-                  Подключите Trello, чтобы импортировать карточки как вопросы
+                  Подключите Trello, чтобы импортировать карточки как вопросы. Название карточки
+                  станет текстом вопроса.
                 </p>
                 <button
                   type="button"
@@ -324,6 +381,25 @@ export default function NewPackagePage() {
                   />
                   Списки как туры
                 </label>
+
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground">
+                    Формат карточек Trello
+                  </summary>
+                  <div className="mt-2 p-2 bg-muted/50 rounded space-y-1">
+                    <p>
+                      <strong>Название:</strong> текст вопроса
+                    </p>
+                    <p>
+                      <strong>Описание:</strong>
+                    </p>
+                    <pre className="text-[11px] bg-background p-2 rounded mt-1">
+                      {`Ответ: правильный ответ
+Зачёт: альтернативные ответы
+Комментарий: пояснение`}
+                    </pre>
+                  </div>
+                </details>
 
                 {importStatus && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">

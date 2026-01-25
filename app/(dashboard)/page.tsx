@@ -1,15 +1,32 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus } from "lucide-react";
+import { useQuery } from "convex/react";
+import { FileText, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
-import { getAllPackages } from "@/lib/db/client";
+import { useEffect, useState } from "react";
+import { api } from "@/convex/_generated/api";
+import { decryptPackages, type Package } from "@/lib/db/encrypted-client";
+import { useEncryptionStore } from "@/stores/encryption";
 
 export default function PackagesPage() {
-  const { data: packages, isLoading } = useQuery({
-    queryKey: ["packages"],
-    queryFn: getAllPackages,
-  });
+  const masterKey = useEncryptionStore((state) => state.masterKey);
+  const encryptedPackages = useQuery(api.packages.list);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
+  useEffect(() => {
+    if (!encryptedPackages || !masterKey) {
+      setPackages([]);
+      return;
+    }
+
+    setIsDecrypting(true);
+    decryptPackages(masterKey, encryptedPackages)
+      .then(setPackages)
+      .finally(() => setIsDecrypting(false));
+  }, [encryptedPackages, masterKey]);
+
+  const isLoading = encryptedPackages === undefined || isDecrypting;
 
   return (
     <div className="space-y-6">
@@ -25,7 +42,10 @@ export default function PackagesPage() {
       </div>
 
       {isLoading ? (
-        <div className="text-muted-foreground">Загрузка...</div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Загрузка...
+        </div>
       ) : !packages || packages.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />

@@ -5,6 +5,7 @@ import { fetchBoardCards, fetchBoards, fetchLists, type TrelloBoard } from "./cl
 import { type ParsedPackage, parseCardsToTours } from "./parser";
 
 export interface TrelloImportOptions {
+  token: string;
   boardId: string;
   // Use lists as tours
   listsAsTours: boolean;
@@ -19,9 +20,9 @@ export interface TrelloImportResult {
 /**
  * Fetch and parse a Trello board
  */
-export async function fetchTrelloPackage(boardId: string): Promise<ParsedPackage> {
+export async function fetchTrelloPackage(token: string, boardId: string): Promise<ParsedPackage> {
   // Fetch board info
-  const boards = await fetchBoards();
+  const boards = await fetchBoards(token);
   const board = boards.find((b) => b.id === boardId);
 
   if (!board) {
@@ -29,7 +30,10 @@ export async function fetchTrelloPackage(boardId: string): Promise<ParsedPackage
   }
 
   // Fetch lists and cards
-  const [lists, cards] = await Promise.all([fetchLists(boardId), fetchBoardCards(boardId)]);
+  const [lists, cards] = await Promise.all([
+    fetchLists(token, boardId),
+    fetchBoardCards(token, boardId),
+  ]);
 
   // Parse cards into tours
   const tours = parseCardsToTours(cards, lists);
@@ -52,7 +56,7 @@ export async function importTrelloBoard(
   onProgress?.("Загрузка доски...");
 
   // Fetch and parse board
-  const parsed = await fetchTrelloPackage(options.boardId);
+  const parsed = await fetchTrelloPackage(options.token, options.boardId);
 
   onProgress?.("Создание пакета...");
 
@@ -135,6 +139,6 @@ export async function importTrelloBoard(
 /**
  * Get list of user's Trello boards
  */
-export async function getTrelloBoards(): Promise<TrelloBoard[]> {
-  return fetchBoards();
+export async function getTrelloBoards(token: string): Promise<TrelloBoard[]> {
+  return fetchBoards(token);
 }

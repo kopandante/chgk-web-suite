@@ -7,29 +7,33 @@ import {
   Link2,
   Loader2,
   Send,
+  ShieldCheck,
   Trash2,
   Trello,
   Unlink,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useEncryption } from "@/hooks/use-encryption";
 import { useTelegramChannels } from "@/hooks/use-telegram-channel";
+import { useTrello } from "@/hooks/use-trello";
 import { testBotConnection } from "@/lib/export/telegram";
-import {
-  clearTrelloToken,
-  getTrelloToken,
-  openTrelloAuth,
-  testTrelloConnection,
-} from "@/lib/trello/client";
+import { openTrelloAuth, testTrelloConnection } from "@/lib/trello/client";
 
 export default function SettingsPage() {
   const [isClearing, setIsClearing] = useState(false);
+  const { isReady } = useEncryption();
 
-  // Trello state
-  const [trelloConnected, setTrelloConnected] = useState(false);
-  const [trelloLoading, setTrelloLoading] = useState(true);
+  // Trello
+  const {
+    isLoading: trelloLoading,
+    isConnected: trelloConnected,
+    isReady: trelloReady,
+    saveToken,
+    deleteToken,
+  } = useTrello();
 
-  // Telegram state
+  // Telegram
   const {
     isLoading: telegramLoading,
     isAuthenticated,
@@ -40,35 +44,15 @@ export default function SettingsPage() {
     cancelLinking,
   } = useTelegramChannels();
 
-  const [pendingCode, setPendingCode] = useState<{
-    code: string;
-    expiresAt: number;
-  } | null>(null);
+  const [pendingCode, setPendingCode] = useState<{ code: string; expiresAt: number } | null>(null);
   const [botName, setBotName] = useState<string | null>(null);
 
-  // Check Trello connection on mount
-  useEffect(() => {
-    const checkTrello = async () => {
-      const token = getTrelloToken();
-      if (token) {
-        const result = await testTrelloConnection();
-        setTrelloConnected(result.ok);
-      }
-      setTrelloLoading(false);
-    };
-    checkTrello();
-  }, []);
-
-  // Test bot connection on mount
   useEffect(() => {
     testBotConnection().then((result) => {
-      if (result.ok && result.botName) {
-        setBotName(result.botName);
-      }
+      if (result.ok && result.botName) setBotName(result.botName);
     });
   }, []);
 
-  // Clear pending code when channel verified
   useEffect(() => {
     if (linkStatus?.status === "verified") {
       toast.success(`Канал "${linkStatus.channelTitle || linkStatus.channelId}" привязан`);
@@ -84,10 +68,7 @@ export default function SettingsPage() {
         : linkStatus;
 
   const handleClearData = async () => {
-    if (!confirm("Вы уверены? Все данные будут удалены.")) {
-      return;
-    }
-
+    if (!confirm("Вы уверены? Все данные будут удалены.")) return;
     setIsClearing(true);
     try {
       const { del } = await import("idb-keyval");
@@ -99,22 +80,31 @@ export default function SettingsPage() {
   };
 
   const handleTrelloConnect = async () => {
+    if (!trelloReady) {
+      toast.error("Шифрование не готово");
+      return;
+    }
     try {
-      await openTrelloAuth();
-      const result = await testTrelloConnection();
-      setTrelloConnected(result.ok);
+      const token = await openTrelloAuth();
+      const result = await testTrelloConnection(token);
       if (result.ok) {
+        await saveToken(token);
         toast.success("Trello подключен");
+      } else {
+        toast.error(result.error || "Не удалось подключить Trello");
       }
     } catch {
       toast.error("Не удалось подключить Trello");
     }
   };
 
-  const handleTrelloDisconnect = () => {
-    clearTrelloToken();
-    setTrelloConnected(false);
-    toast.success("Trello отключен");
+  const handleTrelloDisconnect = async () => {
+    try {
+      await deleteToken();
+      toast.success("Trello отключен");
+    } catch {
+      toast.error("Не удалось отключить Trello");
+    }
   };
 
   const handleStartLinking = async () => {
@@ -148,7 +138,25 @@ export default function SettingsPage() {
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-bold">Настройки</h1>
 
-      {/* Telegram Integration */}
+      {/* Encryption */}
+      <div className="rounded-lg border p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">Шифрование</h2>
+        </div>
+        <div className="flex items-start gap-3 text-sm">
+          <ShieldCheck className="h-4 w-4 mt-0.5 text-green-600" />
+          <div>
+            <p className="font-medium">{isReady ? "Шифрование активно" : "Инициализация..."}</p>
+            <p className="text-muted-foreground">
+              Все данные шифруются на клиенте с использованием AES-256-GCM. Ключ хранится в вашем
+              аккаунте и недоступен серверу.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Telegram */}
       <div className="rounded-lg border p-6 space-y-4">
         <div className="flex items-center gap-3">
           <Send className="h-5 w-5" />
@@ -166,20 +174,24 @@ export default function SettingsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* List of linked channels */}
             {channels.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">Привязанные каналы</p>
                 {channels.map((channel) => (
                   <div
                     key={channel.channelId}
-                    className="flex items-center justify-between rounded-md border px-3 py-2"
+                    className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2"
                   >
-                    <span className="text-sm">{channel.channelTitle || channel.channelId}</span>
+                    <div className="flex items-center gap-2">
+                      <Send className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        {channel.channelTitle || channel.channelId}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleUnlinkChannel(channel.channelId)}
-                      className="rounded-md p-1 text-destructive hover:bg-destructive/10"
+                      className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       title="Отвязать канал"
                     >
                       <Unlink className="h-4 w-4" />
@@ -189,7 +201,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Linking in progress */}
             {displayLinkStatus?.status === "pending" ? (
               <div className="space-y-3">
                 <div className="rounded-md border bg-muted/50 p-4 space-y-3">
@@ -197,9 +208,7 @@ export default function SettingsPage() {
                     1. Добавьте бота {botName && <span className="font-medium">@{botName}</span>} в
                     канал как администратора
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    2. Отправьте этот код в канал:
-                  </div>
+                  <div className="text-sm text-muted-foreground">2. Отправьте этот код в канал:</div>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 rounded-md bg-background px-4 py-3 text-center text-2xl font-mono font-bold tracking-wider">
                       {displayLinkStatus.code}
@@ -230,22 +239,20 @@ export default function SettingsPage() {
                 </button>
               </div>
             ) : (
-              <div>
-                <button
-                  type="button"
-                  onClick={handleStartLinking}
-                  className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm hover:bg-accent"
-                >
-                  <Link2 className="h-4 w-4" />
-                  {channels.length > 0 ? "Добавить канал" : "Привязать канал"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleStartLinking}
+                className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm hover:bg-accent"
+              >
+                <Link2 className="h-4 w-4" />
+                {channels.length > 0 ? "Добавить канал" : "Привязать канал"}
+              </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Trello Integration */}
+      {/* Trello */}
       <div className="rounded-lg border p-6 space-y-4">
         <div className="flex items-center gap-3">
           <Trello className="h-5 w-5" />
@@ -288,25 +295,22 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Storage info */}
+      {/* Storage */}
       <div className="rounded-lg border p-6 space-y-4">
         <div className="flex items-center gap-3">
           <Database className="h-5 w-5" />
           <h2 className="text-lg font-semibold">Хранилище данных</h2>
         </div>
-
         <div className="space-y-4">
           <div className="flex items-start gap-3 text-sm">
             <HardDrive className="h-4 w-4 mt-0.5 text-muted-foreground" />
             <div>
               <p className="font-medium">Локальное хранилище</p>
               <p className="text-muted-foreground">
-                Все данные хранятся локально в вашем браузере с использованием SQLite. Данные не
-                передаются на сервер.
+                Все данные хранятся локально в вашем браузере с использованием SQLite.
               </p>
             </div>
           </div>
-
           <div className="pt-4 border-t">
             <button
               type="button"
@@ -325,7 +329,7 @@ export default function SettingsPage() {
       <div className="rounded-lg border p-6 space-y-4">
         <h2 className="text-lg font-semibold">О приложении</h2>
         <div className="text-sm text-muted-foreground space-y-2">
-          <p>CHGK Web - приложение для работы с пакетами вопросов "Что? Где? Когда?".</p>
+          <p>CHGK Web Suite — приложение для работы с пакетами вопросов «Что? Где? Когда?».</p>
           <p>
             Позволяет импортировать пакеты из DOCX, редактировать вопросы и экспортировать в
             различные форматы.

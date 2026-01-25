@@ -20,12 +20,9 @@ export default function TrelloCallbackPage() {
         // Close after short delay to show success message
         setTimeout(() => window.close(), 1500);
       } else {
-        // No opener - store token directly and redirect
-        localStorage.setItem("trello_token", token);
-        setStatus("success");
-        setTimeout(() => {
-          window.location.href = "/import";
-        }, 1500);
+        // No opener - just show error (token should be handled by opener)
+        setStatus("error");
+        setError("Окно должно быть открыто из приложения");
       }
     } else {
       setStatus("error");

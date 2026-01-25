@@ -24,55 +24,13 @@ export interface TrelloCard {
   idBoard: string;
 }
 
-// Trello API key - this is public and safe to include in client code
-// Users authorize with their own accounts
-const TRELLO_API_KEY = "your_api_key_here"; // TODO: move to env
-
 const TRELLO_API_BASE = "https://api.trello.com/1";
 
 /**
- * Get stored Trello token from localStorage
- */
-export function getTrelloToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("trello_token");
-}
-
-/**
- * Save Trello token to localStorage
- */
-export function saveTrelloToken(token: string): void {
-  localStorage.setItem("trello_token", token);
-}
-
-/**
- * Clear Trello token
- */
-export function clearTrelloToken(): void {
-  localStorage.removeItem("trello_token");
-}
-
-/**
- * Get Trello API key from env or localStorage
+ * Get Trello API key from env
  */
 export function getTrelloApiKey(): string {
-  // First check env (for development)
-  if (process.env.NEXT_PUBLIC_TRELLO_API_KEY) {
-    return process.env.NEXT_PUBLIC_TRELLO_API_KEY;
-  }
-  // Then check localStorage (user can set their own)
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("trello_api_key");
-    if (stored) return stored;
-  }
-  return TRELLO_API_KEY;
-}
-
-/**
- * Save custom API key
- */
-export function saveTrelloApiKey(apiKey: string): void {
-  localStorage.setItem("trello_api_key", apiKey);
+  return process.env.NEXT_PUBLIC_TRELLO_API_KEY || "";
 }
 
 /**
@@ -85,7 +43,7 @@ export function getTrelloAuthUrl(returnUrl?: string): string {
 
   const params = new URLSearchParams({
     key: apiKey,
-    name: "CHGK-Web",
+    name: "CHGK Web Suite",
     scope: "read",
     response_type: "token",
     expiration: "never",
@@ -97,6 +55,7 @@ export function getTrelloAuthUrl(returnUrl?: string): string {
 
 /**
  * Open Trello auth in popup window
+ * Returns the token (does not save it)
  */
 export function openTrelloAuth(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -117,6 +76,8 @@ export function openTrelloAuth(): Promise<string> {
       return;
     }
 
+    let resolved = false;
+
     // Listen for message from callback page
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -126,7 +87,7 @@ export function openTrelloAuth(): Promise<string> {
         popup.close();
 
         if (event.data.token) {
-          saveTrelloToken(event.data.token);
+          resolved = true;
           resolve(event.data.token);
         } else {
           reject(new Error("Authorization cancelled"));
@@ -143,7 +104,7 @@ export function openTrelloAuth(): Promise<string> {
         window.removeEventListener("message", handleMessage);
         // Give a small delay for the message to arrive
         setTimeout(() => {
-          if (!getTrelloToken()) {
+          if (!resolved) {
             reject(new Error("Authorization cancelled"));
           }
         }, 500);
@@ -155,8 +116,11 @@ export function openTrelloAuth(): Promise<string> {
 /**
  * Make authenticated request to Trello API
  */
-async function trelloFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-  const token = getTrelloToken();
+async function trelloFetch<T>(
+  token: string,
+  endpoint: string,
+  params: Record<string, string> = {},
+): Promise<T> {
   const apiKey = getTrelloApiKey();
 
   if (!token) {
@@ -173,7 +137,6 @@ async function trelloFetch<T>(endpoint: string, params: Record<string, string> =
 
   if (!response.ok) {
     if (response.status === 401) {
-      clearTrelloToken();
       throw new Error("Trello authorization expired");
     }
     throw new Error(`Trello API error: ${response.statusText}`);
@@ -185,13 +148,13 @@ async function trelloFetch<T>(endpoint: string, params: Record<string, string> =
 /**
  * Test Trello connection and get user info
  */
-export async function testTrelloConnection(): Promise<{
+export async function testTrelloConnection(token: string): Promise<{
   ok: boolean;
   username?: string;
   error?: string;
 }> {
   try {
-    const member = await trelloFetch<{ username: string }>("/members/me", {
+    const member = await trelloFetch<{ username: string }>(token, "/members/me", {
       fields: "username",
     });
     return { ok: true, username: member.username };
@@ -206,8 +169,8 @@ export async function testTrelloConnection(): Promise<{
 /**
  * Fetch user's boards
  */
-export async function fetchBoards(): Promise<TrelloBoard[]> {
-  return trelloFetch<TrelloBoard[]>("/members/me/boards", {
+export async function fetchBoards(token: string): Promise<TrelloBoard[]> {
+  return trelloFetch<TrelloBoard[]>(token, "/members/me/boards", {
     fields: "id,name,desc,url",
     filter: "open",
   });
@@ -216,8 +179,8 @@ export async function fetchBoards(): Promise<TrelloBoard[]> {
 /**
  * Fetch lists from a board
  */
-export async function fetchLists(boardId: string): Promise<TrelloList[]> {
-  return trelloFetch<TrelloList[]>(`/boards/${boardId}/lists`, {
+export async function fetchLists(token: string, boardId: string): Promise<TrelloList[]> {
+  return trelloFetch<TrelloList[]>(token, `/boards/${boardId}/lists`, {
     fields: "id,name,pos,idBoard",
     filter: "open",
   });
@@ -226,8 +189,8 @@ export async function fetchLists(boardId: string): Promise<TrelloList[]> {
 /**
  * Fetch cards from a list
  */
-export async function fetchCards(listId: string): Promise<TrelloCard[]> {
-  return trelloFetch<TrelloCard[]>(`/lists/${listId}/cards`, {
+export async function fetchCards(token: string, listId: string): Promise<TrelloCard[]> {
+  return trelloFetch<TrelloCard[]>(token, `/lists/${listId}/cards`, {
     fields: "id,name,desc,pos,idShort,idList,idBoard",
   });
 }
@@ -235,8 +198,8 @@ export async function fetchCards(listId: string): Promise<TrelloCard[]> {
 /**
  * Fetch all cards from a board
  */
-export async function fetchBoardCards(boardId: string): Promise<TrelloCard[]> {
-  return trelloFetch<TrelloCard[]>(`/boards/${boardId}/cards`, {
+export async function fetchBoardCards(token: string, boardId: string): Promise<TrelloCard[]> {
+  return trelloFetch<TrelloCard[]>(token, `/boards/${boardId}/cards`, {
     fields: "id,name,desc,pos,idShort,idList,idBoard",
   });
 }

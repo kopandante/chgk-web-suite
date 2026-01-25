@@ -1,10 +1,11 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
-import { LogOut, Package, Settings } from "lucide-react";
+import { HelpCircle, LogOut, Package, Settings, Shield } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { EncryptionGuard } from "@/components/encryption";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
@@ -20,23 +21,26 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useEncryption } from "@/hooks/use-encryption";
 
 const navItems = [
   { href: "/", label: "Мои пакеты", icon: Package },
   { href: "/settings", label: "Настройки", icon: Settings },
+  { href: "/help", label: "Справка", icon: HelpCircle },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { isReady } = useEncryption();
 
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4">
           <Link href="/" className="text-xl font-bold">
-            CHGK Web
+            CHGK Web Suite
           </Link>
         </SidebarHeader>
         <SidebarContent>
@@ -97,9 +101,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="flex h-14 items-center gap-2 border-b px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
-          <span className="text-sm text-muted-foreground">Локальное хранилище</span>
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-green-600" />
+            <span className="text-sm text-muted-foreground">
+              {isReady ? "Зашифрованное хранилище" : "Загрузка..."}
+            </span>
+          </div>
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6">
+          <EncryptionGuard>{children}</EncryptionGuard>
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );

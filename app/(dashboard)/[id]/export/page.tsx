@@ -72,15 +72,8 @@ export default function ExportPackagePage() {
   // Convex real-time channels state
   const { channels } = useTelegramChannels();
 
-  // Выбранный канал
+  // Выбранный канал (с fallback на первый)
   const selectedChannel = channels.find((c) => c.channelId === selectedChannelId) ?? channels[0];
-
-  // Автовыбор первого канала
-  useEffect(() => {
-    if (channels.length > 0 && !selectedChannelId) {
-      setSelectedChannelId(channels[0].channelId);
-    }
-  }, [channels, selectedChannelId]);
 
   // Предупреждение при уходе во время экспорта в Telegram
   useEffect(() => {
@@ -492,12 +485,12 @@ export default function ExportPackagePage() {
                         type="button"
                         onClick={() => setSelectedChannelId(channel.channelId)}
                         className={`w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                          selectedChannelId === channel.channelId
+                          selectedChannel?.channelId === channel.channelId
                             ? "border-primary bg-primary/5"
                             : "hover:bg-accent"
                         }`}
                       >
-                        {selectedChannelId === channel.channelId && (
+                        {selectedChannel?.channelId === channel.channelId && (
                           <Check className="h-4 w-4 text-primary" />
                         )}
                         <span>{channel.channelTitle || channel.channelId}</span>
