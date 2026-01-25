@@ -89,7 +89,7 @@ export async function exportToPptx(
   pptx.defineLayout({ name: "CUSTOM", width: options.slideWidth, height: options.slideHeight });
   pptx.layout = "CUSTOM";
   pptx.title = pkg.title;
-  pptx.author = pkg.editor || "CHGK-Web";
+  pptx.author = pkg.editor || "CHGK Web Suite";
 
   // Title slide
   const titleSlide = pptx.addSlide();

@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CHGK Web",
+  title: "CHGK Web Suite",
   description: "Веб-приложение для работы с пакетами ЧГК",
 };
 

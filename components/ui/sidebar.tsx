@@ -62,6 +62,11 @@ function SidebarProvider({
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
 
+  // Rehydrate zustand store on mount (client-side only)
+  React.useEffect(() => {
+    useSidebarStore.persist.rehydrate();
+  }, []);
+
   // Use zustand store for persistence
   const { isOpen: storedOpen, setOpen: setStoredOpen } = useSidebarStore();
 
