@@ -4,8 +4,6 @@
 import type { Question } from "@/lib/db/schema";
 
 export interface TelegramExportOptions {
-  // Bot token from @BotFather
-  botToken: string;
   // Channel ID or @username
   channelId: string;
   // Use spoilers for answers
@@ -149,35 +147,22 @@ export function formatQuestionForTelegram(
 }
 
 /**
- * Send a message to Telegram channel
+ * Send a message to Telegram channel via API route
  */
 export async function sendToTelegram(
-  botToken: string,
   channelId: string,
   text: string,
 ): Promise<{ ok: boolean; messageId?: number; error?: string }> {
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-
   try {
-    const response = await fetch(url, {
+    const response = await fetch("/api/telegram", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        chat_id: channelId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify({ channelId, text }),
     });
 
-    const data = await response.json();
-
-    if (data.ok) {
-      return { ok: true, messageId: data.result.message_id };
-    }
-    return { ok: false, error: data.description || "Unknown error" };
+    return await response.json();
   } catch (err) {
     return {
       ok: false,
@@ -187,58 +172,16 @@ export async function sendToTelegram(
 }
 
 /**
- * Send a photo with caption to Telegram channel
+ * Test bot connection via API route
  */
-export async function sendPhotoToTelegram(
-  botToken: string,
-  channelId: string,
-  photoData: Blob,
-  caption: string,
-): Promise<{ ok: boolean; messageId?: number; error?: string }> {
-  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
-
+export async function testBotConnection(): Promise<{
+  ok: boolean;
+  botName?: string;
+  error?: string;
+}> {
   try {
-    const formData = new FormData();
-    formData.append("chat_id", channelId);
-    formData.append("photo", photoData);
-    formData.append("caption", caption);
-    formData.append("parse_mode", "HTML");
-
-    const response = await fetch(url, {
-      method: "POST",
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    if (data.ok) {
-      return { ok: true, messageId: data.result.message_id };
-    }
-    return { ok: false, error: data.description || "Unknown error" };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Network error",
-    };
-  }
-}
-
-/**
- * Test bot connection by getting bot info
- */
-export async function testBotConnection(
-  botToken: string,
-): Promise<{ ok: boolean; botName?: string; error?: string }> {
-  const url = `https://api.telegram.org/bot${botToken}/getMe`;
-
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.ok) {
-      return { ok: true, botName: data.result.username };
-    }
-    return { ok: false, error: data.description || "Invalid token" };
+    const response = await fetch("/api/telegram");
+    return await response.json();
   } catch (err) {
     return {
       ok: false,
@@ -264,7 +207,7 @@ export async function exportToTelegram(
     const question = questions[i];
     const text = formatQuestionForTelegram(question, i, opts);
 
-    const result = await sendToTelegram(opts.botToken, opts.channelId, text);
+    const result = await sendToTelegram(opts.channelId, text);
 
     if (result.ok) {
       success++;

@@ -42,7 +42,6 @@ export default function ExportPackagePage() {
     includeImages: true,
   });
   const [telegramOptions, setTelegramOptions] = useState({
-    botToken: "",
     channelId: "",
     useSpoilers: true,
     includeZachet: true,
@@ -63,16 +62,11 @@ export default function ExportPackagePage() {
     error?: string;
   }>({ tested: false, ok: false });
 
-  // Load saved Telegram settings from localStorage
+  // Load saved Telegram channel from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("telegram_settings");
+    const saved = localStorage.getItem("telegram_channel");
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setTelegramOptions((prev) => ({ ...prev, ...parsed }));
-      } catch {
-        // ignore
-      }
+      setTelegramOptions((prev) => ({ ...prev, channelId: saved }));
     }
   }, []);
 
@@ -200,7 +194,7 @@ export default function ExportPackagePage() {
 
   const testBotMutation = useMutation({
     mutationFn: async () => {
-      const result = await testBotConnection(telegramOptions.botToken);
+      const result = await testBotConnection();
       if (!result.ok) {
         throw new Error(result.error || "Connection failed");
       }
@@ -208,14 +202,8 @@ export default function ExportPackagePage() {
     },
     onSuccess: (result) => {
       setBotStatus({ tested: true, ok: true, name: result.botName });
-      // Save settings on successful test
-      localStorage.setItem(
-        "telegram_settings",
-        JSON.stringify({
-          botToken: telegramOptions.botToken,
-          channelId: telegramOptions.channelId,
-        }),
-      );
+      // Save channel setting
+      localStorage.setItem("telegram_channel", telegramOptions.channelId);
       toast.success(`Бот @${result.botName} подключен`);
     },
     onError: (err) => {
@@ -380,49 +368,40 @@ export default function ExportPackagePage() {
             <h2 className="text-lg font-semibold">Настройки Telegram</h2>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Bot Token</label>
-                <div className="mt-1 flex gap-2">
-                  <input
-                    type="password"
-                    value={telegramOptions.botToken}
-                    onChange={(e) => {
-                      setTelegramOptions((prev) => ({
-                        ...prev,
-                        botToken: e.target.value,
-                      }));
-                      setBotStatus({ tested: false, ok: false });
-                    }}
-                    placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-                    className="flex-1 rounded-md border px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => testBotMutation.mutate()}
-                    disabled={!telegramOptions.botToken || testBotMutation.isPending}
-                    className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
-                  >
-                    {testBotMutation.isPending ? (
+              {/* Bot status */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => testBotMutation.mutate()}
+                  disabled={testBotMutation.isPending}
+                  className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                >
+                  {testBotMutation.isPending ? (
+                    <span className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : botStatus.tested && botStatus.ok ? (
+                      Проверка...
+                    </span>
+                  ) : botStatus.tested && botStatus.ok ? (
+                    <span className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                    ) : botStatus.tested && !botStatus.ok ? (
+                      Бот подключен
+                    </span>
+                  ) : botStatus.tested && !botStatus.ok ? (
+                    <span className="flex items-center gap-2">
                       <X className="h-4 w-4 text-red-600" />
-                    ) : (
-                      "Проверить"
-                    )}
-                  </button>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Получите токен у @BotFather в Telegram
-                </p>
+                      Ошибка подключения
+                    </span>
+                  ) : (
+                    "Проверить подключение"
+                  )}
+                </button>
                 {botStatus.tested && botStatus.ok && botStatus.name && (
-                  <p className="mt-1 text-xs text-green-600">Подключен: @{botStatus.name}</p>
-                )}
-                {botStatus.tested && !botStatus.ok && botStatus.error && (
-                  <p className="mt-1 text-xs text-red-600">{botStatus.error}</p>
+                  <span className="text-sm text-muted-foreground">@{botStatus.name}</span>
                 )}
               </div>
+              {botStatus.tested && !botStatus.ok && botStatus.error && (
+                <p className="text-xs text-red-600">{botStatus.error}</p>
+              )}
 
               <div>
                 <label className="text-sm font-medium">ID канала</label>
@@ -514,10 +493,12 @@ export default function ExportPackagePage() {
 
             <button
               type="button"
-              onClick={() => exportTelegramMutation.mutate()}
+              onClick={() => {
+                localStorage.setItem("telegram_channel", telegramOptions.channelId);
+                exportTelegramMutation.mutate();
+              }}
               disabled={
                 exportTelegramMutation.isPending ||
-                !telegramOptions.botToken ||
                 !telegramOptions.channelId ||
                 !questions?.length
               }
