@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "bunx convex codegen && next build --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
