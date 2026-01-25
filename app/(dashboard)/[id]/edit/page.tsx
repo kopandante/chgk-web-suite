@@ -99,17 +99,17 @@ export default function EditPackagePage() {
         } else if (q.isNew) {
           await createQuestion({
             package_id: packageId,
-            tour_id: tours?.[0]?.id || null,
+            tour_id: tours?.[0]?.id || undefined,
             order_num: questions.indexOf(q),
-            number: q.number,
+            number: q.number ?? undefined,
             question: q.question,
-            answer: q.answer,
-            zachet: q.zachet,
-            nezachet: q.nezachet,
-            comment: q.comment,
-            source: q.source,
-            author: q.author,
-            handout: q.handout,
+            answer: q.answer ?? undefined,
+            zachet: q.zachet ?? undefined,
+            nezachet: q.nezachet ?? undefined,
+            comment: q.comment ?? undefined,
+            source: q.source ?? undefined,
+            author: q.author ?? undefined,
+            handout: q.handout ?? undefined,
           });
         } else {
           await updateQuestion(q.id, {
@@ -126,9 +126,6 @@ export default function EditPackagePage() {
         }
       }
 
-      // Update question count
-      const activeQuestions = questions.filter((q) => !q.isDeleted);
-      await updatePackage(packageId, { question_count: activeQuestions.length });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["package", packageId] });

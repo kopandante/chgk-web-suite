@@ -84,15 +84,15 @@ export async function importTrelloBoard(
           package_id: pkg.id,
           tour_id: tourRecord.id,
           order_num: questionCount,
-          number: q.number,
+          number: q.number ?? undefined,
           question: q.question,
-          answer: q.answer,
-          zachet: q.zachet,
-          nezachet: q.nezachet,
-          comment: q.comment,
-          source: q.source,
-          author: q.author,
-          handout: q.handout,
+          answer: q.answer ?? undefined,
+          zachet: q.zachet ?? undefined,
+          nezachet: q.nezachet ?? undefined,
+          comment: q.comment ?? undefined,
+          source: q.source ?? undefined,
+          author: q.author ?? undefined,
+          handout: q.handout ?? undefined,
         });
         questionCount++;
       }
@@ -107,17 +107,17 @@ export async function importTrelloBoard(
 
       await createQuestion({
         package_id: pkg.id,
-        tour_id: null,
+        tour_id: undefined,
         order_num: i,
         number: q.number ?? i + 1,
         question: q.question,
-        answer: q.answer,
-        zachet: q.zachet,
-        nezachet: q.nezachet,
-        comment: q.comment,
-        source: q.source,
-        author: q.author,
-        handout: q.handout,
+        answer: q.answer ?? undefined,
+        zachet: q.zachet ?? undefined,
+        nezachet: q.nezachet ?? undefined,
+        comment: q.comment ?? undefined,
+        source: q.source ?? undefined,
+        author: q.author ?? undefined,
+        handout: q.handout ?? undefined,
       });
       questionCount++;
     }

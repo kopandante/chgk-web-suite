@@ -1,6 +1,6 @@
 // PPTX export using pptxgenjs library
+// Dynamic import to avoid SSR issues with Node.js modules
 
-import PptxGenJS from "pptxgenjs";
 import type { Image, Package, Question, Tour } from "@/lib/db/schema";
 
 export interface PptxExportOptions {
@@ -75,6 +75,9 @@ export async function exportToPptx(
   for (const img of images) {
     imageMap.set(img.id, img);
   }
+
+  // Dynamic import pptxgenjs to avoid SSR issues
+  const PptxGenJS = (await import("pptxgenjs")).default;
 
   // Create presentation
   const pptx = new PptxGenJS();

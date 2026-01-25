@@ -26,6 +26,9 @@ export interface ParsedPackage {
   tours: ParsedTour[];
 }
 
+// String fields in ParsedQuestion (excluding number and question)
+type StringField = "answer" | "zachet" | "nezachet" | "comment" | "source" | "author" | "handout";
+
 /**
  * Parse card description to extract question fields
  * Supports multiple formats:
@@ -45,7 +48,7 @@ function parseCardDescription(desc: string): Partial<ParsedQuestion> {
     "(?:Зач[её]т|Accept|Незач|Reject|Комм|Comment|Источ|Source|Автор|Author|Разд|Handout)";
 
   const patterns: Array<{
-    field: keyof ParsedQuestion;
+    field: StringField;
     patterns: RegExp[];
   }> = [
     {
