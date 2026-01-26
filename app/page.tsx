@@ -3,8 +3,11 @@
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { ArrowRight, ArrowUpRight, Lock, Shield, Zap } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 export default function LandingPage() {
+  const [showAnswers, setShowAnswers] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white overflow-hidden">
       {/* Gradient background */}
@@ -140,15 +143,29 @@ export default function LandingPage() {
                       словом.
                     </p>
                   </div>
-                  <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap items-center gap-3">
-                    <span className="text-sm text-white/40">Ответы:</span>
-                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
-                      Однорукого
+                  <button
+                    type="button"
+                    onClick={() => setShowAnswers(!showAnswers)}
+                    className="mt-6 pt-6 border-t border-white/10 w-full text-left flex flex-wrap items-center gap-3 group"
+                  >
+                    <span className="text-sm text-white/40">
+                      {showAnswers ? "Ответы:" : "Показать ответы"}
                     </span>
-                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
-                      Питбуль
-                    </span>
-                  </div>
+                    {showAnswers ? (
+                      <>
+                        <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
+                          Однорукого
+                        </span>
+                        <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
+                          Питбуль
+                        </span>
+                      </>
+                    ) : (
+                      <span className="px-3 py-1.5 rounded-lg bg-white/5 text-white/30 text-sm font-medium group-hover:bg-white/10 group-hover:text-white/50 transition-colors">
+                        Нажмите, чтобы раскрыть
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
