@@ -127,6 +127,15 @@ export default function LandingPage() {
                 <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 rounded-3xl blur-2xl opacity-50" />
 
                 <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-6 md:p-8">
+                  <a
+                    href="https://gotquestions.online/question/117351"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute top-4 right-4 text-white/20 hover:text-white/50 transition-colors"
+                    title="Источник"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                  </a>
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
                       <span className="text-blue-400 text-sm font-bold">1</span>
@@ -166,15 +175,6 @@ export default function LandingPage() {
                       </span>
                     )}
                   </button>
-                  <a
-                    href="https://gotquestions.online/question/117351"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 text-xs text-white/30 hover:text-white/50 transition-colors inline-flex items-center gap-1"
-                  >
-                    Источник
-                    <ArrowUpRight className="w-3 h-3" />
-                  </a>
                 </div>
               </div>
             </div>
