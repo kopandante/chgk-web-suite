@@ -50,8 +50,11 @@ stores/                # Zustand stores
 
 ## Синхронизация данных
 
-```
-Convex (encrypted) → usePackageSync → Zustand (decrypted cache) → UI
+```mermaid
+flowchart LR
+    A[Convex<br/>encrypted] --> B[usePackageSync]
+    B --> C[Zustand<br/>decrypted cache]
+    C --> D[UI]
 ```
 
 - **usePackageSync(packageId)** - хук синхронизации, подписывается на Convex через WebSocket

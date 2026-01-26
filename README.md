@@ -82,39 +82,24 @@
 
 ## Архитектура
 
-```
-+-------------------------------------------------------------------+
-|                         Браузер                                    |
-+-------------------------------------------------------------------+
-|  +--------------+  +--------------+  +--------------------------+  |
-|  |  React UI    |  |   Zustand    |  |    Web Crypto API        |  |
-|  |  (Next.js)   |  |   Store      |  |     (AES-256-GCM)        |  |
-|  +------+-------+  +------+-------+  +------------+--------------+  |
-|         |                 |                       |                 |
-|         +-----------------+-----------------------+                 |
-|                           |                                         |
-|               +-----------+-----------+                             |
-|               |   Encrypted Client    |                             |
-|               |  (encrypt/decrypt)    |                             |
-|               +-----------+-----------+                             |
-+---------------------------|------------------------------------------+
-                            | (зашифрованные данные)
-                            v
-+-------------------------------------------------------------------+
-|                         Convex                                     |
-|  +---------------------------------------------------------------+ |
-|  |  packages  |  tours  |  questions  |  images  |  telegram     | |
-|  |  (encrypted base64 blobs)                                     | |
-|  +---------------------------------------------------------------+ |
-+-------------------------------------------------------------------+
+```mermaid
+flowchart TB
+    subgraph Browser[Браузер]
+        UI[React UI<br/>Next.js]
+        Store[Zustand<br/>Store]
+        Crypto[Web Crypto API<br/>AES-256-GCM]
+        UI & Store & Crypto --> Client[Encrypted Client<br/>encrypt/decrypt]
+    end
 
-+-------------------------------------------------------------------+
-|                         Clerk                                      |
-|  +---------------------------------------------------------------+ |
-|  |  unsafeMetadata: { encryptionKey: "base64..." }               | |
-|  |  (экспортированный AES-256 ключ)                              | |
-|  +---------------------------------------------------------------+ |
-+-------------------------------------------------------------------+
+    Client -->|зашифрованные данные| Convex
+
+    subgraph Convex[Convex]
+        Tables[packages | tours | questions | images | telegram<br/>encrypted base64 blobs]
+    end
+
+    subgraph Clerk[Clerk]
+        Meta["unsafeMetadata: { encryptionKey: base64... }<br/>экспортированный AES-256 ключ"]
+    end
 ```
 
 ### Поток данных
@@ -126,24 +111,13 @@
 
 ### Синхронизация данных (Convex + Zustand)
 
-```
-┌─────────────┐    WebSocket     ┌──────────────────┐
-│   Convex    │ ◄──────────────► │  usePackageSync  │
-│ (encrypted) │   real-time      │     (hook)       │
-└─────────────┘                  └────────┬─────────┘
-                                          │ decrypt
-                                          ▼
-                                 ┌──────────────────┐
-                                 │  Zustand Store   │
-                                 │ (decrypted cache)│
-                                 └────────┬─────────┘
-                                          │
-          ┌───────────────────────────────┼───────────────────────────────┐
-          ▼                               ▼                               ▼
-   ┌─────────────┐                ┌─────────────┐                ┌─────────────┐
-   │  Просмотр   │                │   Список    │                │  Редактор   │
-   │   пакета    │                │  вопросов   │                │   вопроса   │
-   └─────────────┘                └─────────────┘                └─────────────┘
+```mermaid
+flowchart TB
+    Convex[Convex<br/>encrypted] <-->|WebSocket<br/>real-time| Sync[usePackageSync<br/>hook]
+    Sync -->|decrypt| Store[Zustand Store<br/>decrypted cache]
+    Store --> View[Просмотр пакета]
+    Store --> List[Список вопросов]
+    Store --> Editor[Редактор вопроса]
 ```
 
 **Почему Zustand?**
@@ -278,12 +252,12 @@ chgk-web-suite/
 
 ### Иерархия ключей
 
-```
-Master Key (AES-256)
-    │
-    ├── хранится в памяти (Zustand, без persist)
-    │
-    └── экспортирован в base64 → Clerk unsafeMetadata
+```mermaid
+flowchart TB
+    MK[Master Key<br/>AES-256]
+    MK --> Memory[хранится в памяти<br/>Zustand, без persist]
+    MK --> Export[экспортирован в base64]
+    Export --> Clerk[Clerk unsafeMetadata]
 ```
 
 ### Процесс инициализации (первый вход)
