@@ -166,6 +166,15 @@ export default function LandingPage() {
                       </span>
                     )}
                   </button>
+                  <a
+                    href="https://gotquestions.online/question/117351"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 text-xs text-white/30 hover:text-white/50 transition-colors inline-flex items-center gap-1"
+                  >
+                    Источник: gotquestions.online
+                    <ArrowUpRight className="w-3 h-3" />
+                  </a>
                 </div>
               </div>
             </div>
