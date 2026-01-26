@@ -128,17 +128,25 @@ export default function LandingPage() {
                     <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
                       <span className="text-blue-400 text-sm font-bold">1</span>
                     </div>
-                    <span className="text-sm text-white/40 uppercase tracking-wider">Вопрос</span>
+                    <span className="text-sm text-white/40 uppercase tracking-wider">Дуплет</span>
                   </div>
-                  <p className="text-lg md:text-xl leading-relaxed text-white/90">
-                    В 1920-х годах жители одного американского города регулярно наблюдали, как некий
-                    человек ходит по улицам в костюме и котелке, неся под мышкой свернутый зонт.
-                    Назовите этого человека.
-                  </p>
-                  <div className="mt-6 pt-6 border-t border-white/10 flex items-center gap-3">
-                    <span className="text-sm text-white/40">Ответ:</span>
+                  <div className="space-y-4 text-lg md:text-xl leading-relaxed text-white/90">
+                    <p>
+                      1. Афоризм гласит, что никогда не надо покупать питбуля у такого человека.
+                      Ответьте одним словом: какого?
+                    </p>
+                    <p>
+                      2. Прослушайте загадку: «Четыре ноги и одна рука». Ответьте на нее одним
+                      словом.
+                    </p>
+                  </div>
+                  <div className="mt-6 pt-6 border-t border-white/10 flex flex-wrap items-center gap-3">
+                    <span className="text-sm text-white/40">Ответы:</span>
                     <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
-                      Чарли Чаплин
+                      Однорукого
+                    </span>
+                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-sm font-medium">
+                      Питбуль
                     </span>
                   </div>
                 </div>
