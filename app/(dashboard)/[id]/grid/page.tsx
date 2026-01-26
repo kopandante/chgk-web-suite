@@ -437,7 +437,7 @@ export default function EditPackagePage() {
           orderNum: tourQuestions.length,
         });
 
-        router.push(`/${packageId}/edit/${newId}`);
+        router.push(`/${packageId}/grid/${newId}`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Ошибка создания вопроса");
       }
@@ -604,7 +604,7 @@ export default function EditPackagePage() {
                     tour={tour}
                     index={idx}
                     questions={questionsByTour.get(tour.id) ?? []}
-                    onEdit={(id) => router.push(`/${packageId}/edit/${id}`)}
+                    onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
                     onRemove={removeQuestion}
                     onAdd={addQuestion}
                     errors={errors}
@@ -613,7 +613,7 @@ export default function EditPackagePage() {
                 {(questionsByTour.get(null)?.length ?? 0) > 0 && (
                   <NoTourColumn
                     questions={questionsByTour.get(null) ?? []}
-                    onEdit={(id) => router.push(`/${packageId}/edit/${id}`)}
+                    onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
                     onRemove={removeQuestion}
                     onAdd={() => addQuestion(null)}
                     errors={errors}
@@ -623,7 +623,7 @@ export default function EditPackagePage() {
             ) : (
               <NoTourColumn
                 questions={visibleQuestions}
-                onEdit={(id) => router.push(`/${packageId}/edit/${id}`)}
+                onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
                 onRemove={removeQuestion}
                 onAdd={() => addQuestion(null)}
                 errors={errors}

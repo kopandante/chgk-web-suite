@@ -118,7 +118,7 @@ export default function NewPackagePage() {
     },
     onSuccess: (packageId) => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
-      router.push(`/${packageId}/edit`);
+      router.push(`/${packageId}/grid`);
     },
   });
 

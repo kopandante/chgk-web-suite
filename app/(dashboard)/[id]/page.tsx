@@ -2,9 +2,9 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation as useConvexMutation } from "convex/react";
-import { Edit, Loader2, Pencil } from "lucide-react";
+import { Edit, Loader2, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { FormatAnswerField, FormatField, FormatSource, FormatText } from "@/components/format-text";
@@ -18,7 +18,11 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePackageSync } from "@/hooks/use-package-sync";
-import { preparePackageCreate, type Question } from "@/lib/db/encrypted-client";
+import {
+  preparePackageCreate,
+  prepareQuestionCreate,
+  type Question,
+} from "@/lib/db/encrypted-client";
 import { useEncryptionStore } from "@/stores/encryption";
 import { usePackageStore } from "@/stores/package";
 
@@ -51,7 +55,7 @@ function QuestionCard({
           )}
         </div>
         <Link
-          href={`/${packageId}/edit/${question.id}`}
+          href={`/${packageId}/grid/${question.id}`}
           className="p-1.5 rounded-md hover:bg-muted transition-colors"
           title="Редактировать"
         >
@@ -147,6 +151,7 @@ function VirtualizedQuestionList({
 
 export default function PackagePage() {
   const params = useParams();
+  const router = useRouter();
   const packageId = params.id as Id<"packages">;
   const masterKey = useEncryptionStore((state) => state.masterKey);
 
@@ -157,6 +162,7 @@ export default function PackagePage() {
   const { pkg, tours, questions } = usePackageStore();
 
   const [selectedTourId, setSelectedTourId] = useState<Id<"tours"> | null>(null);
+  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
   // Metadata dialog state
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
@@ -167,6 +173,33 @@ export default function PackagePage() {
   const [metadataError, setMetadataError] = useState<string | null>(null);
 
   const updatePackageMutation = useConvexMutation(api.packages.update);
+  const createQuestionMutation = useConvexMutation(api.questions.create);
+
+  const addQuestion = async () => {
+    if (!masterKey || isAddingQuestion) return;
+
+    setIsAddingQuestion(true);
+    try {
+      const maxNumber = Math.max(0, ...questions.map((q) => q.number || 0));
+
+      const questionData = await prepareQuestionCreate(masterKey, {
+        number: maxNumber + 1,
+        question: "",
+      });
+
+      const newId = await createQuestionMutation({
+        packageId,
+        encryptedData: questionData.encryptedData,
+        iv: questionData.iv,
+        orderNum: questions.length,
+      });
+
+      router.push(`/${packageId}/grid/${newId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Ошибка создания вопроса");
+      setIsAddingQuestion(false);
+    }
+  };
 
   const filteredQuestions = selectedTourId
     ? questions.filter((q) => q.tour_id === selectedTourId)
@@ -323,36 +356,52 @@ export default function PackagePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Tours filter */}
-      {tours.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-5">
-          <button
-            type="button"
-            onClick={() => setSelectedTourId(null)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              selectedTourId === null
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary hover:bg-secondary/80"
-            }`}
-          >
-            Все
-          </button>
-          {tours.map((tour, index) => (
+      {/* Tours filter + Add button */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-5">
+        {tours.length > 0 && (
+          <>
             <button
               type="button"
-              key={tour.id}
-              onClick={() => setSelectedTourId(tour.id)}
+              onClick={() => setSelectedTourId(null)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                selectedTourId === tour.id
+                selectedTourId === null
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary hover:bg-secondary/80"
               }`}
             >
-              {tour.title || `Тур ${index + 1}`}
+              Все
             </button>
-          ))}
-        </div>
-      )}
+            {tours.map((tour, index) => (
+              <button
+                type="button"
+                key={tour.id}
+                onClick={() => setSelectedTourId(tour.id)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  selectedTourId === tour.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary hover:bg-secondary/80"
+                }`}
+              >
+                {tour.title || `Тур ${index + 1}`}
+              </button>
+            ))}
+            <div className="w-px h-4 bg-border mx-1" />
+          </>
+        )}
+        <button
+          type="button"
+          onClick={addQuestion}
+          disabled={isAddingQuestion}
+          className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors bg-secondary hover:bg-secondary/80 inline-flex items-center gap-1"
+        >
+          {isAddingQuestion ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Plus className="h-3 w-3" />
+          )}
+          Добавить
+        </button>
+      </div>
 
       {/* Questions */}
       {filteredQuestions.length > 0 ? (
@@ -369,13 +418,6 @@ export default function PackagePage() {
       ) : (
         <div className="text-center py-12 text-muted-foreground mt-5">
           <p className="text-sm">Нет вопросов</p>
-          <Link
-            href={`/${packageId}/edit`}
-            className="mt-3 inline-flex items-center gap-1.5 btn-outline px-3 py-1.5 text-sm"
-          >
-            <Edit className="h-3.5 w-3.5" />
-            Добавить
-          </Link>
         </div>
       )}
     </div>

@@ -176,7 +176,7 @@ export default function EditQuestionPage() {
       <div className="max-w-2xl mx-auto text-center py-20">
         <h1 className="text-2xl font-display font-bold">Вопрос не найден</h1>
         <Link
-          href={`/${packageId}/edit`}
+          href={`/${packageId}/grid`}
           className="mt-6 inline-flex items-center gap-2 btn-primary rounded-lg px-5 py-2.5 text-sm"
         >
           Вернуться к редактированию
@@ -255,13 +255,13 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
 
   const goToPrev = useCallback(() => {
     if (prevQuestionId) {
-      safeNavigate(`/${packageId}/edit/${prevQuestionId}`);
+      safeNavigate(`/${packageId}/grid/${prevQuestionId}`);
     }
   }, [prevQuestionId, packageId, safeNavigate]);
 
   const goToNext = useCallback(() => {
     if (nextQuestionId) {
-      safeNavigate(`/${packageId}/edit/${nextQuestionId}`);
+      safeNavigate(`/${packageId}/grid/${nextQuestionId}`);
     }
   }, [nextQuestionId, packageId, safeNavigate]);
 
@@ -287,7 +287,7 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
     try {
       await deleteQuestionMutation({ id: question.id });
       toast.success("Вопрос удален");
-      router.push(`/${packageId}/edit`);
+      router.push(`/${packageId}/grid`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Ошибка удаления");
     }
@@ -313,16 +313,6 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [prevQuestionId, nextQuestionId, goToPrev, goToNext]);
-
-  // Prefetch adjacent questions
-  useEffect(() => {
-    if (prevQuestionId) {
-      router.prefetch(`/${packageId}/edit/${prevQuestionId}`);
-    }
-    if (nextQuestionId) {
-      router.prefetch(`/${packageId}/edit/${nextQuestionId}`);
-    }
-  }, [prevQuestionId, nextQuestionId, packageId, router]);
 
   // beforeunload handler
   useEffect(() => {
@@ -478,7 +468,7 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => safeNavigate(`/${packageId}/edit`)}
+            onClick={() => safeNavigate(`/${packageId}/grid`)}
             className="p-2 rounded-lg hover:bg-muted transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

@@ -2,14 +2,25 @@
 
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useMutation as useConvexMutation, useQuery as useConvexQuery } from "convex/react";
-import { BookOpen, ChevronRight, Download, Edit, HelpCircle, LogOut, Moon, Package, Settings, Sun, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  Download,
+  Edit,
+  HelpCircle,
+  LogOut,
+  Moon,
+  Package,
+  Settings,
+  Sun,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { EncryptionGuard } from "@/components/encryption";
-import { useHeaderActionsStore } from "@/stores/header-actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,9 +32,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { decryptPackage } from "@/lib/db/encrypted-client";
 import {
   Sidebar,
   SidebarContent,
@@ -38,7 +46,11 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useEncryption } from "@/hooks/use-encryption";
+import { decryptPackage } from "@/lib/db/encrypted-client";
+import { useHeaderActionsStore } from "@/stores/header-actions";
 
 const navItems = [
   { href: "/packages", label: "Пакеты", icon: Package },
@@ -75,16 +87,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push("/packages");
   };
 
-  const encryptedPkg = useConvexQuery(
-    api.packages.get,
-    packageId ? { id: packageId } : "skip"
-  );
+  const encryptedPkg = useConvexQuery(api.packages.get, packageId ? { id: packageId } : "skip");
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   // Сбрасываем название при смене пакета
+  // biome-ignore lint/correctness/useExhaustiveDependencies: packageId нужен для сброса при смене пакета
   useEffect(() => {
     setPackageTitle(null);
   }, [packageId]);
@@ -118,13 +128,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (pathname === "/new") {
       return [{ href: "/packages", label: "Пакеты" }, { label: "Новый пакет" }];
     }
-    // /[id]/edit
-    const editMatch = pathname.match(/^\/([^/]+)\/edit$/);
-    if (editMatch) {
+    // /[id]/grid/[questionId]
+    const gridQuestionMatch = pathname.match(/^\/([^/]+)\/grid\/([^/]+)$/);
+    if (gridQuestionMatch) {
       return [
         { href: "/packages", label: "Пакеты" },
-        { href: `/${editMatch[1]}`, label: pkgLabel },
+        { href: `/${gridQuestionMatch[1]}`, label: pkgLabel },
+        { href: `/${gridQuestionMatch[1]}/grid`, label: "Сетка" },
         { label: "Редактирование" },
+      ];
+    }
+    // /[id]/grid
+    const gridMatch = pathname.match(/^\/([^/]+)\/grid$/);
+    if (gridMatch) {
+      return [
+        { href: "/packages", label: "Пакеты" },
+        { href: `/${gridMatch[1]}`, label: pkgLabel },
+        { label: "Сетка" },
       ];
     }
     // /[id]/export
@@ -149,7 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider>
       <Sidebar className="border-r-0">
-        <SidebarHeader className="p-4 border-b border-sidebar-border">
+        <SidebarHeader className="p-4">
           <div className="flex items-center justify-between">
             <Link href="/packages" className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
@@ -267,11 +287,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {isPackageViewPage && packageId && (
               <>
                 <Link
-                  href={`/${packageId}/edit`}
+                  href={`/${packageId}/grid`}
                   className="btn-outline px-3 py-1.5 text-sm inline-flex items-center gap-1.5"
                 >
                   <Edit className="h-3.5 w-3.5" />
-                  Редактировать
+                  Сетка
                 </Link>
                 <Link
                   href={`/${packageId}/export`}
@@ -293,7 +313,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <AlertDialogHeader>
                       <AlertDialogTitle>Удалить пакет?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Пакет {packageTitle ? `"${packageTitle}"` : ""} будет удален вместе со всеми вопросами.
+                        Пакет {packageTitle ? `"${packageTitle}"` : ""} будет удален вместе со всеми
+                        вопросами.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -312,10 +333,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {headerActions}
           </div>
         </header>
-        <main className="flex-1 min-h-0 p-4 md:p-6">
-          <div className="h-full">
-            <EncryptionGuard>{children}</EncryptionGuard>
-          </div>
+        <main className="flex-1 min-h-0 overflow-auto p-4 md:p-6">
+          <EncryptionGuard>{children}</EncryptionGuard>
         </main>
       </SidebarInset>
     </SidebarProvider>
