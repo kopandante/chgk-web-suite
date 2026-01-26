@@ -172,7 +172,7 @@ export default function LandingPage() {
                     rel="noopener noreferrer"
                     className="mt-4 text-xs text-white/30 hover:text-white/50 transition-colors inline-flex items-center gap-1"
                   >
-                    Источник: gotquestions.online
+                    Источник
                     <ArrowUpRight className="w-3 h-3" />
                   </a>
                 </div>
