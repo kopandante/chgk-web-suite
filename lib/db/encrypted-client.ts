@@ -4,6 +4,66 @@
 import type { Id } from "@/convex/_generated/dataModel";
 import { decrypt, type EncryptedData, encrypt } from "@/lib/crypto";
 
+// Question type for duplets and blitzes
+export type QuestionType = "regular" | "duplet" | "blitz";
+
+// Handout type
+export type HandoutType = "none" | "text" | "image";
+
+// Structured field for duplets/blitzes (sub-questions or sub-answers)
+export interface StructuredField {
+  header?: string; // "Дуплет." or "Блиц."
+  items: string[]; // Sub-questions or sub-answers
+}
+
+// Field value can be string or structured
+export type QuestionFieldValue = string | StructuredField;
+
+// Type guard for structured field
+export function isStructuredField(value: unknown): value is StructuredField {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "items" in value &&
+    Array.isArray((value as StructuredField).items)
+  );
+}
+
+// Detect question type from question field
+export function detectQuestionType(question: QuestionFieldValue): QuestionType {
+  if (typeof question === "string") {
+    const lower = question.toLowerCase();
+    if (lower.startsWith("дуплет") || lower.includes("\nдуплет")) return "duplet";
+    if (lower.startsWith("блиц") || lower.includes("\nблиц")) return "blitz";
+    return "regular";
+  }
+
+  // Structured field
+  const header = question.header?.toLowerCase() || "";
+  if (header.includes("дуплет") || question.items.length === 2) return "duplet";
+  if (header.includes("блиц") || question.items.length === 3) return "blitz";
+  return question.items.length > 1 ? "duplet" : "regular";
+}
+
+// Get display text from QuestionFieldValue (for previews, search, etc.)
+export function getFieldDisplayText(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  const parts: string[] = [];
+  if (value.header) parts.push(value.header);
+  value.items.forEach((item, idx) => {
+    parts.push(`${idx + 1}. ${item}`);
+  });
+  return parts.join("\n");
+}
+
+// Convert structured field to string (for legacy compatibility)
+export function fieldToString(value: QuestionFieldValue | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  return getFieldDisplayText(value);
+}
+
 // Types for decrypted data (matching the old schema interface)
 export interface Package {
   id: Id<"packages">;
@@ -29,15 +89,18 @@ export interface Question {
   package_id: Id<"packages">;
   tour_id: Id<"tours"> | null;
   order_num: number;
+  type: QuestionType;
   number: number | null;
-  question: string;
-  answer: string | null;
+  question: QuestionFieldValue;
+  answer: QuestionFieldValue | null;
   zachet: string | null;
   nezachet: string | null;
   comment: string | null;
-  source: string | null;
+  source: string | string[] | null;
   author: string | null;
   handout: string | null;
+  handoutType: HandoutType;
+  handoutImageId: string | null;
   created_at: number;
 }
 
@@ -64,15 +127,18 @@ interface TourData {
 }
 
 interface QuestionData {
+  type?: QuestionType;
   number: number | null;
-  question: string;
-  answer: string | null;
+  question: QuestionFieldValue;
+  answer: QuestionFieldValue | null;
   zachet: string | null;
   nezachet: string | null;
   comment: string | null;
-  source: string | null;
+  source: string | string[] | null;
   author: string | null;
   handout: string | null;
+  handoutType?: HandoutType;
+  handoutImageId?: string | null;
 }
 
 // Convex document types (from queries)
@@ -165,6 +231,18 @@ export async function decryptTours(masterKey: CryptoKey, tours: ConvexTour[]): P
   return Promise.all(tours.map((tour) => decryptTour(masterKey, tour)));
 }
 
+// Determine handout type from existing data (for backwards compatibility)
+export function getHandoutType(
+  handout: string | null,
+  handoutType?: HandoutType,
+  handoutImageId?: string | null,
+): HandoutType {
+  if (handoutType) return handoutType;
+  if (handoutImageId) return "image";
+  if (handout) return "text";
+  return "none";
+}
+
 export async function decryptQuestion(
   masterKey: CryptoKey,
   question: ConvexQuestion,
@@ -174,11 +252,18 @@ export async function decryptQuestion(
     iv: question.iv,
   });
 
+  // Determine type: use stored type or detect from question content
+  const questionType = data.type ?? detectQuestionType(data.question);
+
+  // Determine handout type for backwards compatibility
+  const handoutType = getHandoutType(data.handout, data.handoutType, data.handoutImageId);
+
   return {
     id: question._id,
     package_id: question.packageId,
     tour_id: question.tourId ?? null,
     order_num: question.orderNum,
+    type: questionType,
     number: data.number,
     question: data.question,
     answer: data.answer,
@@ -188,6 +273,8 @@ export async function decryptQuestion(
     source: data.source,
     author: data.author,
     handout: data.handout,
+    handoutType,
+    handoutImageId: data.handoutImageId ?? null,
     created_at: question.createdAt,
   };
 }
@@ -344,16 +431,19 @@ export async function prepareTourCreate(
 }
 
 // Input type for question creation (accepts both null and undefined)
-interface QuestionInput {
+export interface QuestionInput {
+  type?: QuestionType;
   number?: number | null;
-  question: string;
-  answer?: string | null;
+  question: QuestionFieldValue;
+  answer?: QuestionFieldValue | null;
   zachet?: string | null;
   nezachet?: string | null;
   comment?: string | null;
-  source?: string | null;
+  source?: string | string[] | null;
   author?: string | null;
   handout?: string | null;
+  handoutType?: HandoutType;
+  handoutImageId?: string | null;
 }
 
 // Helper to prepare question creation data
@@ -361,7 +451,11 @@ export async function prepareQuestionCreate(
   masterKey: CryptoKey,
   data: QuestionInput,
 ): Promise<{ encryptedData: string; iv: string }> {
+  // Determine type if not provided
+  const questionType = data.type ?? detectQuestionType(data.question);
+
   const questionData: QuestionData = {
+    type: questionType,
     number: data.number ?? null,
     question: data.question,
     answer: data.answer ?? null,
@@ -371,6 +465,8 @@ export async function prepareQuestionCreate(
     source: data.source ?? null,
     author: data.author ?? null,
     handout: data.handout ?? null,
+    handoutType: data.handoutType,
+    handoutImageId: data.handoutImageId ?? null,
   };
   const encrypted = await encryptQuestionData(masterKey, questionData);
   return {

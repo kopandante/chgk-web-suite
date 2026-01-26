@@ -48,6 +48,16 @@ hooks/                 # React хуки
 stores/                # Zustand stores
 ```
 
+## Синхронизация данных
+
+```
+Convex (encrypted) → usePackageSync → Zustand (decrypted cache) → UI
+```
+
+- **usePackageSync(packageId)** - хук синхронизации, подписывается на Convex через WebSocket
+- **usePackageStore** - Zustand store с кэшем расшифрованных данных
+- При изменении в Convex данные автоматически дешифруются и обновляются в store
+
 ## Правила
 
 - Без эмодзи в коде и комментариях

@@ -15,16 +15,11 @@
 3. [Архитектура](#архитектура)
 4. [Структура проекта](#структура-проекта)
 5. [E2E шифрование](#e2e-шифрование)
-6. [База данных (Convex)](#база-данных-convex)
-7. [Парсер вопросов](#парсер-вопросов)
-8. [Экспорт данных](#экспорт-данных)
-9. [Интеграции](#интеграции)
-10. [Компоненты UI](#компоненты-ui)
-11. [Хуки и состояние](#хуки-и-состояние)
-12. [API и маршруты](#api-и-маршруты)
-13. [Разработка](#разработка)
-14. [Безопасность](#безопасность)
-15. [Лицензия](#лицензия)
+6. [Хуки и состояние](#хуки-и-состояние)
+7. [Разработка](#разработка)
+8. [Безопасность](#безопасность)
+9. [Глоссарий](#глоссарий)
+10. [Лицензия](#лицензия)
 
 ---
 
@@ -129,6 +124,52 @@
 3. **Операции**: данные шифруются на клиенте перед отправкой в Convex
 4. **Синхронизация**: Convex обеспечивает real-time обновления между устройствами
 
+### Синхронизация данных (Convex + Zustand)
+
+```
+┌─────────────┐    WebSocket     ┌──────────────────┐
+│   Convex    │ ◄──────────────► │  usePackageSync  │
+│ (encrypted) │   real-time      │     (hook)       │
+└─────────────┘                  └────────┬─────────┘
+                                          │ decrypt
+                                          ▼
+                                 ┌──────────────────┐
+                                 │  Zustand Store   │
+                                 │ (decrypted cache)│
+                                 └────────┬─────────┘
+                                          │
+          ┌───────────────────────────────┼───────────────────────────────┐
+          ▼                               ▼                               ▼
+   ┌─────────────┐                ┌─────────────┐                ┌─────────────┐
+   │  Просмотр   │                │   Список    │                │  Редактор   │
+   │   пакета    │                │  вопросов   │                │   вопроса   │
+   └─────────────┘                └─────────────┘                └─────────────┘
+```
+
+**Почему Zustand?**
+
+Convex кэширует данные по ключу запроса. При переходе между вопросами каждый `useConvexQuery(api.questions.get, { id })` с новым `id` требует нового запроса к серверу.
+
+Zustand решает две проблемы:
+1. **Кэш расшифрованных данных** - дешифровка выполняется один раз
+2. **Мгновенные переходы** - данные уже в памяти, не нужен запрос
+
+**Механизм синхронизации:**
+
+1. `usePackageSync(packageId)` подписывается на Convex через `useConvexQuery`
+2. При изменении данных в Convex (любым клиентом) срабатывает WebSocket push
+3. Хук дешифрует данные и обновляет Zustand store
+4. Все компоненты автоматически перерендериваются
+
+**Задержки:**
+
+| Этап | Время |
+|------|-------|
+| Mutation → Convex сервер | 50-150ms |
+| Convex → другие клиенты (push) | 10-50ms |
+| Дешифровка | 10-50ms |
+| **Итого для real-time sync** | ~100-250ms |
+
 ---
 
 ## Структура проекта
@@ -173,12 +214,14 @@ chgk-web-suite/
 │
 ├── hooks/
 │   ├── use-encryption.ts         # Хук чтения состояния шифрования
+│   ├── use-package-sync.ts       # Синхронизация Convex → Zustand
 │   ├── use-trello.ts             # Интеграция Trello
 │   ├── use-mobile.ts             # Определение мобильного устройства
 │   └── use-telegram-channel.ts   # Работа с Telegram-каналами
 │
 ├── stores/
 │   ├── encryption.ts             # Zustand store шифрования
+│   ├── package.ts                # Кэш расшифрованных данных пакета
 │   └── sidebar.ts                # Состояние сайдбара
 │
 ├── lib/
@@ -384,6 +427,75 @@ test: добавить тесты парсера
 - При компрометации Clerk данные могут быть расшифрованы
 - Master key в памяти браузера (уязвим к extensions)
 - Метаданные (количество пакетов, даты) видны серверу
+
+---
+
+## Хуки и состояние
+
+### usePackageSync
+
+Хук синхронизации данных пакета из Convex в Zustand:
+
+```typescript
+function usePackageSync(packageId: Id<"packages">) {
+  // Подписка на Convex (WebSocket)
+  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
+  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
+  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
+
+  // При изменении - дешифровка и обновление store
+  useEffect(() => {
+    if (encryptedPkg && encryptedQuestions && encryptedTours && masterKey) {
+      Promise.all([
+        decryptPackage(masterKey, encryptedPkg),
+        decryptQuestions(masterKey, encryptedQuestions),
+        decryptTours(masterKey, encryptedTours),
+      ]).then(([pkg, questions, tours]) => {
+        setPackage(packageId, pkg, tours, questions);
+      });
+    }
+  }, [encryptedPkg, encryptedQuestions, encryptedTours, masterKey]);
+
+  return { isLoading, notFound };
+}
+```
+
+### usePackageStore (Zustand)
+
+Кэш расшифрованных данных пакета:
+
+```typescript
+interface PackageState {
+  packageId: Id<"packages"> | null;
+  pkg: Package | null;
+  tours: Tour[];
+  questions: Question[];
+
+  setPackage: (packageId, pkg, tours, questions) => void;
+  updateQuestion: (questionId, data) => void;  // Optimistic update
+  getQuestion: (questionId) => Question | undefined;
+  clear: () => void;
+}
+```
+
+### Использование в компонентах
+
+```typescript
+// Страница пакета - инициирует синхронизацию
+function PackagePage() {
+  const { isLoading, notFound } = usePackageSync(packageId);
+  const { pkg, tours, questions } = usePackageStore();
+  // ...
+}
+
+// Редактор вопроса - использует кэш
+function QuestionEditor() {
+  const { isLoading } = usePackageSync(packageId);  // Подхватит существующий кэш
+  const { questions } = usePackageStore();
+  const question = questions.find(q => q.id === questionId);  // Мгновенно!
+  // ...
+}
+```
 
 ---
 

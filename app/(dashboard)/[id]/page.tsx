@@ -1,29 +1,62 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useQuery as useConvexQuery } from "convex/react";
-import { Edit, Loader2 } from "lucide-react";
+import { useMutation as useConvexMutation } from "convex/react";
+import { Edit, Loader2, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { FormatSource, FormatText } from "@/components/format-text";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { FormatAnswerField, FormatField, FormatSource, FormatText } from "@/components/format-text";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  decryptPackage,
-  decryptQuestions,
-  decryptTours,
-  type Package,
-  type Question,
-  type Tour,
-} from "@/lib/db/encrypted-client";
+import { usePackageSync } from "@/hooks/use-package-sync";
+import { preparePackageCreate, type Question } from "@/lib/db/encrypted-client";
 import { useEncryptionStore } from "@/stores/encryption";
+import { usePackageStore } from "@/stores/package";
 
-function QuestionCard({ question, index }: { question: Question; index: number }) {
+function QuestionCard({
+  question,
+  index,
+  packageId,
+}: {
+  question: Question;
+  index: number;
+  packageId: Id<"packages">;
+}) {
+  const typeLabel =
+    question.type === "duplet" ? "Дуплет" : question.type === "blitz" ? "Блиц" : null;
+
+  // Handle source as string or array
+  const sourceStr = Array.isArray(question.source) ? question.source.join("\n") : question.source;
+
   return (
     <div className="library-card p-4 space-y-3">
-      <div className="text-xs text-muted-foreground uppercase tracking-wider">
-        Вопрос {question.number ?? index + 1}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">
+            Вопрос {question.number ?? index + 1}
+          </span>
+          {typeLabel && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground">
+              {typeLabel}
+            </span>
+          )}
+        </div>
+        <Link
+          href={`/${packageId}/edit/${question.id}`}
+          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+          title="Редактировать"
+        >
+          <Pencil className="h-4 w-4 text-muted-foreground" />
+        </Link>
       </div>
       {question.handout && (
         <div className="bg-secondary/50 rounded-md p-3 text-sm border-l-2 border-accent">
@@ -32,13 +65,13 @@ function QuestionCard({ question, index }: { question: Question; index: number }
         </div>
       )}
       <div className="whitespace-pre-wrap leading-relaxed">
-        <FormatText text={question.question} questionId={question.id} />
+        <FormatField value={question.question} questionId={question.id} />
       </div>
       {question.answer && (
         <div className="pt-3 border-t text-sm">
           <span className="text-muted-foreground">Ответ: </span>
           <span className="font-medium">
-            <FormatText text={question.answer} questionId={question.id} />
+            <FormatAnswerField value={question.answer} questionId={question.id} />
           </span>
         </div>
       )}
@@ -48,10 +81,10 @@ function QuestionCard({ question, index }: { question: Question; index: number }
           <FormatText text={question.zachet} questionId={question.id} />
         </div>
       )}
-      {question.source && (
+      {sourceStr && (
         <div className="text-sm text-muted-foreground">
           <span>Источник: </span>
-          <FormatSource source={question.source} questionId={question.id} />
+          <FormatSource source={sourceStr} questionId={question.id} />
         </div>
       )}
       {question.comment && (
@@ -70,7 +103,13 @@ function QuestionCard({ question, index }: { question: Question; index: number }
   );
 }
 
-function VirtualizedQuestionList({ questions }: { questions: Question[] }) {
+function VirtualizedQuestionList({
+  questions,
+  packageId,
+}: {
+  questions: Question[];
+  packageId: Id<"packages">;
+}) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -97,7 +136,7 @@ function VirtualizedQuestionList({ questions }: { questions: Question[] }) {
                 transform: `translateY(${virtualItem.start}px)`,
               }}
             >
-              <QuestionCard question={question} index={virtualItem.index} />
+              <QuestionCard question={question} index={virtualItem.index} packageId={packageId} />
             </div>
           );
         })}
@@ -111,71 +150,72 @@ export default function PackagePage() {
   const packageId = params.id as Id<"packages">;
   const masterKey = useEncryptionStore((state) => state.masterKey);
 
-  const [pkg, setPkg] = useState<Package | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [tours, setTours] = useState<Tour[]>([]);
+  // Sync package data from Convex to store
+  const { isLoading, notFound } = usePackageSync(packageId);
+
+  // Read data from store
+  const { pkg, tours, questions } = usePackageStore();
+
   const [selectedTourId, setSelectedTourId] = useState<Id<"tours"> | null>(null);
-  const [isDecrypting, setIsDecrypting] = useState(true);
 
-  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
-  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
-  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
+  // Metadata dialog state
+  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
+  const [metadataTitle, setMetadataTitle] = useState("");
+  const [metadataEditor, setMetadataEditor] = useState("");
+  const [metadataDate, setMetadataDate] = useState("");
+  const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!encryptedPkg || !masterKey) {
-      setPkg(null);
-      return;
-    }
-
-    decryptPackage(masterKey, encryptedPkg)
-      .then(setPkg)
-      .catch((err) => {
-        console.error("Failed to decrypt package:", err);
-        setPkg(null);
-      });
-  }, [encryptedPkg, masterKey]);
-
-  useEffect(() => {
-    if (!encryptedQuestions || !masterKey) {
-      setQuestions([]);
-      return;
-    }
-
-    decryptQuestions(masterKey, encryptedQuestions)
-      .then((decrypted) => {
-        const sorted = [...decrypted].sort((a, b) => a.order_num - b.order_num);
-        setQuestions(sorted);
-      })
-      .catch((err) => {
-        console.error("Failed to decrypt questions:", err);
-        setQuestions([]);
-      });
-  }, [encryptedQuestions, masterKey]);
-
-  useEffect(() => {
-    if (!encryptedTours || !masterKey) {
-      setTours([]);
-      setIsDecrypting(false);
-      return;
-    }
-
-    decryptTours(masterKey, encryptedTours)
-      .then((decrypted) => {
-        setTours(decrypted);
-        setIsDecrypting(false);
-      })
-      .catch((err) => {
-        console.error("Failed to decrypt tours:", err);
-        setTours([]);
-        setIsDecrypting(false);
-      });
-  }, [encryptedTours, masterKey]);
+  const updatePackageMutation = useConvexMutation(api.packages.update);
 
   const filteredQuestions = selectedTourId
     ? questions.filter((q) => q.tour_id === selectedTourId)
     : questions;
 
-  if (encryptedPkg === undefined || isDecrypting) {
+  const openMetadataDialog = () => {
+    if (pkg) {
+      setMetadataTitle(pkg.title);
+      setMetadataEditor(pkg.editor || "");
+      setMetadataDate(pkg.date || "");
+      setMetadataError(null);
+      setIsMetadataOpen(true);
+    }
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!metadataTitle.trim()) {
+      setMetadataError("Название обязательно");
+      return;
+    }
+
+    if (!masterKey) return;
+
+    setIsSavingMetadata(true);
+    setMetadataError(null);
+
+    try {
+      const packageData = await preparePackageCreate(masterKey, {
+        title: metadataTitle,
+        editor: metadataEditor || undefined,
+        date: metadataDate || undefined,
+      });
+
+      await updatePackageMutation({
+        id: packageId,
+        encryptedData: packageData.encryptedData,
+        iv: packageData.iv,
+      });
+
+      setIsMetadataOpen(false);
+      toast.success("Метаданные сохранены");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Ошибка сохранения");
+    } finally {
+      setIsSavingMetadata(false);
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -184,7 +224,7 @@ export default function PackagePage() {
     );
   }
 
-  if (!pkg) {
+  if (notFound || !pkg) {
     return (
       <div className="max-w-lg mx-auto text-center py-16">
         <h1 className="text-lg font-semibold">Пакет не найден</h1>
@@ -199,7 +239,17 @@ export default function PackagePage() {
     <div className="max-w-3xl mx-auto h-full flex flex-col">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{pkg.title}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight">{pkg.title}</h1>
+          <button
+            type="button"
+            onClick={openMetadataDialog}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Редактировать метаданные"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        </div>
         {pkg.editor && <p className="mt-1 text-sm text-muted-foreground">{pkg.editor}</p>}
         <p className="mt-1 text-xs text-muted-foreground tabular-nums">
           {pkg.question_count}{" "}
@@ -208,6 +258,70 @@ export default function PackagePage() {
             ` / ${pkg.tour_count} ${pkg.tour_count === 1 ? "тур" : pkg.tour_count < 5 ? "тура" : "туров"}`}
         </p>
       </div>
+
+      {/* Metadata Dialog */}
+      <Dialog open={isMetadataOpen} onOpenChange={setIsMetadataOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Метаданные пакета</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-sm font-medium">
+                Название <span className="text-destructive">*</span>
+              </span>
+              <input
+                type="text"
+                value={metadataTitle}
+                onChange={(e) => {
+                  setMetadataTitle(e.target.value);
+                  setMetadataError(null);
+                }}
+                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                  metadataError ? "border-destructive" : ""
+                }`}
+              />
+              {metadataError && <p className="mt-1 text-xs text-destructive">{metadataError}</p>}
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Редактор</span>
+              <input
+                type="text"
+                value={metadataEditor}
+                onChange={(e) => setMetadataEditor(e.target.value)}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium">Дата</span>
+              <input
+                type="text"
+                value={metadataDate}
+                onChange={(e) => setMetadataDate(e.target.value)}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="например: 2024-01-01"
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setIsMetadataOpen(false)}
+              className="btn-outline px-4 py-2 text-sm"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveMetadata}
+              disabled={isSavingMetadata}
+              className="btn-primary px-4 py-2 text-sm"
+            >
+              {isSavingMetadata ? "Сохранение..." : "Сохранить"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Tours filter */}
       {tours.length > 0 && (
@@ -246,7 +360,11 @@ export default function PackagePage() {
           <div className="text-xs text-muted-foreground mb-3">
             {filteredQuestions.length} из {questions.length} вопросов
           </div>
-          <VirtualizedQuestionList key={selectedTourId ?? "all"} questions={filteredQuestions} />
+          <VirtualizedQuestionList
+            key={selectedTourId ?? "all"}
+            questions={filteredQuestions}
+            packageId={packageId}
+          />
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground mt-5">
