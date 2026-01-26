@@ -1,7 +1,7 @@
 "use client";
 
 import { SignedIn, SignedOut } from "@clerk/nextjs";
-import { ArrowRight, ArrowUpRight, Lock, Shield, Zap } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ExternalLink, Lock, Shield, Zap } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -134,7 +134,7 @@ export default function LandingPage() {
                     className="absolute top-4 right-4 text-white/20 hover:text-white/50 transition-colors"
                     title="Источник"
                   >
-                    <ArrowUpRight className="w-4 h-4" />
+                    <ExternalLink className="w-4 h-4" />
                   </a>
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
