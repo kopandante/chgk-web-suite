@@ -5,6 +5,7 @@ import { ClerkProvider, useAuth } from "@clerk/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ThemeProvider } from "next-themes";
 import { type ReactNode, useState } from "react";
 import { EncryptionProvider } from "@/components/encryption";
 
@@ -31,7 +32,9 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <QueryClientProvider client={queryClient}>
-          <EncryptionProvider>{children}</EncryptionProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <EncryptionProvider>{children}</EncryptionProvider>
+          </ThemeProvider>
         </QueryClientProvider>
       </ConvexProviderWithClerk>
     </ClerkProvider>

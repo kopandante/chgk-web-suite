@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   FileText,
@@ -12,7 +11,6 @@ import {
   Trello,
   Upload,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { usePackageImport } from "@/hooks/use-package-import";
@@ -230,15 +228,6 @@ export default function NewPackagePage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      {/* Back link */}
-      <Link
-        href="/packages"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Все пакеты
-      </Link>
-
       {/* Header */}
       <div>
         <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight">Новый пакет</h1>

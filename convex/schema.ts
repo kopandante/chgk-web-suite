@@ -72,7 +72,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_question", ["questionId"]),
+    .index("by_question", ["questionId"])
+    .index("by_question_filename", ["questionId", "filename"]),
 
   // Интеграции (зашифрованные токены)
   integrations: defineTable({

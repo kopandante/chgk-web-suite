@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Source_Sans_3 } from "next/font/google";
+import { Geologica, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const playfair = Playfair_Display({
+const geologica = Geologica({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-display",
+  variable: "--font-body",
   display: "swap",
 });
 
-const sourceSans = Source_Sans_3({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-body",
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -26,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
-      <body className={`${playfair.variable} ${sourceSans.variable} antialiased`}>
+    <html lang="ru" suppressHydrationWarning>
+      <body className={`${geologica.variable} ${jetbrainsMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

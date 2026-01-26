@@ -43,3 +43,4 @@ bun.lockb
 
 # Vercel
 .vercel
+e2e/.auth/

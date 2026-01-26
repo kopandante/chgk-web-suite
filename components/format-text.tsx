@@ -1,8 +1,11 @@
 "use client";
 
-import { Fragment } from "react";
+import { createContext, Fragment, useContext } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
-import { QuestionImageById } from "./question-image";
+import { QuestionImageByFilename } from "./question-image";
+
+// Context to pass questionId through the component tree
+const QuestionContext = createContext<Id<"questions"> | null>(null);
 
 // Placeholder for escaped underscores (using a string that won't appear in text)
 const UNDERSCORE_PLACEHOLDER = "%%UNDERSCORE%%";
@@ -82,6 +85,30 @@ function restoreUnderscores(text: string): string {
 }
 
 /**
+ * Image placeholder component that uses context to get questionId
+ */
+function ImagePlaceholder({ filename, keyId }: { filename: string; keyId: string }) {
+  const questionId = useContext(QuestionContext);
+
+  if (!questionId) {
+    return (
+      <div className="bg-muted/50 rounded p-4 text-muted-foreground text-sm my-2 max-w-md">
+        Изображение: {filename}
+      </div>
+    );
+  }
+
+  return (
+    <QuestionImageByFilename
+      key={keyId}
+      questionId={questionId}
+      filename={filename}
+      className="my-2 max-w-md"
+    />
+  );
+}
+
+/**
  * Parse text and convert URLs to clickable links, images to QuestionImage components
  */
 function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
@@ -121,12 +148,12 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
         </a>,
       );
     } else if (match[2]) {
-      // Image placeholder match
+      // Image placeholder match - use filename to look up image
       result.push(
-        <QuestionImageById
+        <ImagePlaceholder
           key={`img-${keyCounter++}`}
-          imageId={match[2] as Id<"images">}
-          className="my-2 max-w-md"
+          filename={match[2]}
+          keyId={`img-${keyCounter}`}
         />,
       );
     }
@@ -152,18 +179,19 @@ function parseTextWithLinksAndImages(text: string): React.ReactNode[] {
 interface FormatTextProps {
   text: string | null | undefined;
   className?: string;
+  questionId?: Id<"questions">;
 }
 
 /**
  * Format text: apply formatting (_italic_, __bold__, etc.), make URLs clickable, render images
  */
-export function FormatText({ text, className }: FormatTextProps) {
+export function FormatText({ text, className, questionId }: FormatTextProps) {
   if (!text) return null;
 
   // Split by newlines and process each line
   const lines = text.split("\n");
 
-  return (
+  const content = (
     <span className={className}>
       {lines.map((line, lineIndex) => (
         <Fragment key={lineIndex}>
@@ -173,29 +201,37 @@ export function FormatText({ text, className }: FormatTextProps) {
       ))}
     </span>
   );
+
+  // Wrap with context if questionId is provided
+  if (questionId) {
+    return <QuestionContext.Provider value={questionId}>{content}</QuestionContext.Provider>;
+  }
+
+  return content;
 }
 
 interface FormatSourceProps {
   source: string | null | undefined;
+  questionId?: Id<"questions">;
 }
 
 /**
  * Format source field - handles arrays stored as newline-separated strings
  */
-export function FormatSource({ source }: FormatSourceProps) {
+export function FormatSource({ source, questionId }: FormatSourceProps) {
   if (!source) return null;
 
   const lines = source.split("\n").filter((line) => line.trim());
 
   if (lines.length === 1) {
-    return <FormatText text={lines[0]} />;
+    return <FormatText text={lines[0]} questionId={questionId} />;
   }
 
   return (
     <ul className="list-disc list-inside space-y-1">
       {lines.map((line, index) => (
         <li key={index}>
-          <FormatText text={line} />
+          <FormatText text={line} questionId={questionId} />
         </li>
       ))}
     </ul>

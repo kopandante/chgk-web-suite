@@ -17,11 +17,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation as useConvexMutation, useQuery as useConvexQuery } from "convex/react";
-import { ArrowLeft, GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useHeaderActionsStore } from "@/stores/header-actions";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -88,6 +89,7 @@ export default function EditPackagePage() {
   const params = useParams();
   const packageId = params.id as Id<"packages">;
   const masterKey = useEncryptionStore((state) => state.masterKey);
+  const setHeaderActions = useHeaderActionsStore((state) => state.setActions);
 
   const [pkg, setPkg] = useState<Package | null>(null);
   const [dbQuestions, setDbQuestions] = useState<Question[]>([]);
@@ -340,6 +342,21 @@ export default function EditPackagePage() {
     setHasChanges(true);
   };
 
+  // Устанавливаем кнопку "Добавить вопрос" в header
+  useEffect(() => {
+    setHeaderActions(
+      <button
+        type="button"
+        onClick={addQuestion}
+        className="btn-primary px-3 py-1.5 text-sm inline-flex items-center gap-1.5"
+      >
+        <Plus className="h-4 w-4" />
+        Добавить вопрос
+      </button>
+    );
+    return () => setHeaderActions(null);
+  }, [setHeaderActions]);
+
   const removeQuestion = (id: string) => {
     setQuestions((prev) =>
       prev
@@ -412,16 +429,7 @@ export default function EditPackagePage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Редактирование пакета</h1>
-        <Link
-          href={`/${packageId}`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Назад к пакету
-        </Link>
-      </div>
+      <h1 className="text-2xl font-bold">Редактирование пакета</h1>
 
       <form onSubmit={handleSubmit}>
         {/* Package metadata */}
@@ -478,17 +486,7 @@ export default function EditPackagePage() {
 
         {/* Questions */}
         <div className="space-y-4 mt-6">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Вопросы ({visibleQuestions.length})</h2>
-            <button
-              type="button"
-              onClick={addQuestion}
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" />
-              Добавить вопрос
-            </button>
-          </div>
+          <h2 className="font-semibold">Вопросы ({visibleQuestions.length})</h2>
 
           <DndContext
             sensors={sensors}

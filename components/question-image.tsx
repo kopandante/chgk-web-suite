@@ -132,3 +132,45 @@ export function QuestionImageById({
 
   return <QuestionImage image={dbImage} className={className} alt={alt} />;
 }
+
+interface QuestionImageByFilenameProps {
+  questionId: Id<"questions">;
+  filename: string;
+  className?: string;
+  alt?: string;
+}
+
+export function QuestionImageByFilename({
+  questionId,
+  filename,
+  className = "",
+  alt = "Изображение",
+}: QuestionImageByFilenameProps) {
+  const image = useQuery(api.images.getByFilename, { questionId, filename });
+
+  if (image === undefined) {
+    return (
+      <div className={`bg-muted animate-pulse rounded ${className}`} style={{ minHeight: 100 }} />
+    );
+  }
+
+  if (!image) {
+    return (
+      <div className={`bg-muted/50 rounded p-4 text-muted-foreground text-sm ${className}`}>
+        Изображение не найдено: {filename}
+      </div>
+    );
+  }
+
+  const dbImage: DbImage = {
+    id: image._id,
+    question_id: image.questionId,
+    url: image.url ?? "",
+    iv: image.iv,
+    content_type: image.contentType,
+    filename: image.filename ?? null,
+    created_at: image.createdAt,
+  };
+
+  return <QuestionImage image={dbImage} className={className} alt={alt} />;
+}

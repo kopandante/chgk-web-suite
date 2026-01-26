@@ -96,6 +96,41 @@ export const get = query({
   },
 });
 
+export const getByFilename = query({
+  args: {
+    questionId: v.id("questions"),
+    filename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    // Verify question ownership
+    const question = await ctx.db.get(args.questionId);
+    if (!question || question.userId !== identity.subject) {
+      return null;
+    }
+
+    const image = await ctx.db
+      .query("images")
+      .withIndex("by_question_filename", (q) =>
+        q.eq("questionId", args.questionId).eq("filename", args.filename),
+      )
+      .first();
+
+    if (!image) {
+      return null;
+    }
+
+    return {
+      ...image,
+      url: await ctx.storage.getUrl(image.storageId),
+    };
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("images") },
   handler: async (ctx, args) => {

@@ -3,7 +3,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
-  ArrowLeft,
   Braces,
   Check,
   Database,
@@ -471,14 +470,6 @@ export default function ExportPackagePage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <Link
-        href={`/${packageId}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад к пакету
-      </Link>
-
       <h1 className="text-2xl font-bold">Экспорт пакета</h1>
 
       {selectedFormat === "pptx" ? (
