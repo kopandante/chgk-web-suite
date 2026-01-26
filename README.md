@@ -94,7 +94,7 @@ flowchart TB
     Client -->|зашифрованные данные| Convex
 
     subgraph Convex[Convex]
-        Tables[packages | tours | questions | images | telegram<br/>encrypted base64 blobs]
+        Tables["packages, tours, questions, images, telegram<br/>(encrypted base64 blobs)"]
     end
 
     subgraph Clerk[Clerk]
