@@ -1,7 +1,14 @@
 // PPTX export using pptxgenjs library
 // Dynamic import to avoid SSR issues with Node.js modules
 
-import type { Image, Package, Question, Tour } from "@/lib/db/encrypted-client";
+import {
+  type Image,
+  isStructuredField,
+  type Package,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface PptxExportOptions extends RandomizeOptions {
@@ -50,6 +57,28 @@ function restoreUnderscores(text: string): string {
 // Clean text for presentation
 function cleanText(text: string): string {
   return restoreUnderscores(stripImagePlaceholders(text));
+}
+
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
 }
 
 // Extract image IDs from text
@@ -196,7 +225,8 @@ export async function exportToPptx(
       }
 
       // Question text
-      qSlide.addText(cleanText(question.question), {
+      const questionText = fieldValueToString(question.question);
+      qSlide.addText(cleanText(questionText), {
         x: 0.5,
         y: yPosition,
         w: "90%",
@@ -209,7 +239,7 @@ export async function exportToPptx(
 
       // Images in question
       if (options.includeImages) {
-        const questionImages = extractImageIds(question.question);
+        const questionImages = extractImageIds(questionText);
         for (const imgId of questionImages) {
           const img = imageMap.get(imgId);
           if (img?.data) {
@@ -231,7 +261,8 @@ export async function exportToPptx(
       }
 
       // Answer slide (if separate)
-      if (options.separateAnswerSlides && question.answer) {
+      const answerText = fieldValueToString(question.answer);
+      if (options.separateAnswerSlides && answerText) {
         const aSlide = pptx.addSlide();
         aSlide.background = { color: options.backgroundColor };
 
@@ -250,7 +281,7 @@ export async function exportToPptx(
         }
 
         // Answer
-        aSlide.addText(cleanText(question.answer), {
+        aSlide.addText(cleanText(answerText), {
           x: 0.5,
           y: 1,
           w: "90%",
@@ -292,8 +323,9 @@ export async function exportToPptx(
         }
 
         // Source
-        if (question.source) {
-          aSlide.addText(`Источник: ${cleanText(question.source)}`, {
+        const sourceStr = sourceToString(question.source);
+        if (sourceStr) {
+          aSlide.addText(`Источник: ${cleanText(sourceStr)}`, {
             x: 0.5,
             y: answerY,
             w: "90%",

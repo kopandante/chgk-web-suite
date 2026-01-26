@@ -1,6 +1,12 @@
 // Export to db.chgk.info text format
 
-import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
+import {
+  isStructuredField,
+  type Package,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface ChgkDbExportOptions extends RandomizeOptions {
@@ -78,6 +84,28 @@ function processText(text: string): string {
   let result = stripFormatting(text);
   result = convertImagePlaceholders(result);
   return result.trim();
+}
+
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
 }
 
 // Format handout with special tags
@@ -160,13 +188,15 @@ export function exportToChgkDb(
         lines.push(formatHandout(question.handout));
       }
 
-      lines.push(processText(question.question));
+      const questionText = fieldValueToString(question.question);
+      lines.push(processText(questionText));
       lines.push("");
 
       // Answer
-      if (question.answer) {
+      const answerText = fieldValueToString(question.answer);
+      if (answerText) {
         lines.push("Ответ:");
-        lines.push(processText(question.answer));
+        lines.push(processText(answerText));
         lines.push("");
       }
 
@@ -192,9 +222,10 @@ export function exportToChgkDb(
       }
 
       // Source
-      if (options.includeSource && question.source) {
+      const sourceStr = sourceToString(question.source);
+      if (options.includeSource && sourceStr) {
         lines.push("Источник:");
-        lines.push(processText(question.source));
+        lines.push(processText(sourceStr));
         lines.push("");
       }
 

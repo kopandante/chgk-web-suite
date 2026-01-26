@@ -1,7 +1,13 @@
 // Export to Reddit Markdown format
 // Converts questions to Reddit-compatible markdown with spoiler tags
 
-import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
+import {
+  isStructuredField,
+  type Package,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 
 export interface RedditExportOptions {
   // Include fields
@@ -59,6 +65,28 @@ function wrapSpoiler(text: string): string {
   return `>!${singleLine}!<`;
 }
 
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
+}
+
 /**
  * Format a single question for Reddit
  */
@@ -70,8 +98,12 @@ function formatQuestion(
   const parts: string[] = [];
   const questionNumber = question.number ?? index + 1;
 
+  // Type label
+  const typeLabel =
+    question.type === "duplet" ? " (Дуплет)" : question.type === "blitz" ? " (Блиц)" : "";
+
   // Question header
-  parts.push(`**Вопрос ${questionNumber}**`);
+  parts.push(`**Вопрос ${questionNumber}${typeLabel}**`);
   parts.push("");
 
   // Handout
@@ -81,16 +113,18 @@ function formatQuestion(
   }
 
   // Question text
-  parts.push(toRedditMarkdown(question.question));
+  const questionText = fieldValueToString(question.question);
+  parts.push(toRedditMarkdown(questionText));
   parts.push("");
 
   // Answer section
-  if (question.answer) {
-    const answerText = toRedditMarkdown(question.answer);
+  const answerText = fieldValueToString(question.answer);
+  if (answerText) {
+    const answerMarkdown = toRedditMarkdown(answerText);
     if (options.useSpoilers) {
-      parts.push(`**Ответ:** ${wrapSpoiler(answerText)}`);
+      parts.push(`**Ответ:** ${wrapSpoiler(answerMarkdown)}`);
     } else {
-      parts.push(`**Ответ:** ${answerText}`);
+      parts.push(`**Ответ:** ${answerMarkdown}`);
     }
   }
 
@@ -125,8 +159,9 @@ function formatQuestion(
   }
 
   // Source
-  if (options.includeSource && question.source) {
-    const sourceText = toRedditMarkdown(question.source);
+  const sourceStr = sourceToString(question.source);
+  if (options.includeSource && sourceStr) {
+    const sourceText = toRedditMarkdown(sourceStr);
     if (options.useSpoilers) {
       parts.push(`**Источник:** ${wrapSpoiler(sourceText)}`);
     } else {

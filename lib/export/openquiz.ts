@@ -1,6 +1,12 @@
 // Export to OpenQuiz JSON format
 
-import type { Package, Question, Tour } from "@/lib/db/encrypted-client";
+import {
+  isStructuredField,
+  type Package,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 
 export interface OpenQuizExportOptions {
   includeComment?: boolean;
@@ -58,6 +64,28 @@ function processText(text: string): string {
   return result.trim();
 }
 
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
+}
+
 // Parse zachet field into array of acceptable answers
 function parseAcceptableAnswers(zachet: string): string[] {
   const processed = processText(zachet);
@@ -99,9 +127,12 @@ export function exportToOpenQuiz(
 
   // Convert to OpenQuiz format
   const openQuizQuestions: OpenQuizQuestion[] = orderedQuestions.map((q) => {
+    const questionText = fieldValueToString(q.question);
+    const answerText = fieldValueToString(q.answer);
+
     const result: OpenQuizQuestion = {
-      question: processText(q.question),
-      answer: q.answer ? processText(q.answer) : "",
+      question: processText(questionText),
+      answer: answerText ? processText(answerText) : "",
     };
 
     // Parse acceptable answers from zachet field
@@ -117,8 +148,9 @@ export function exportToOpenQuiz(
       result.comment = processText(q.comment);
     }
 
-    if (options.includeSource && q.source) {
-      result.source = processText(q.source);
+    const sourceStr = sourceToString(q.source);
+    if (options.includeSource && sourceStr) {
+      result.source = processText(sourceStr);
     }
 
     if (options.includeAuthor && q.author) {

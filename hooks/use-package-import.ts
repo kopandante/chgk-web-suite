@@ -9,6 +9,9 @@ import {
   preparePackageCreate,
   prepareQuestionCreate,
   prepareTourCreate,
+  type QuestionFieldValue,
+  type QuestionType,
+  type StructuredField,
 } from "@/lib/db/encrypted-client";
 import type { DocxImage } from "@/lib/parser/docx";
 import type { ConvexDependencies } from "@/lib/trello/import";
@@ -16,25 +19,80 @@ import { useEncryptionStore } from "@/stores/encryption";
 
 interface ParsedQuestion {
   number?: number;
-  question: string;
-  answer?: string;
+  question: string | unknown;
+  answer?: string | unknown;
   zachet?: string;
   nezachet?: string;
   comment?: string;
-  source?: string;
+  source?: string | string[];
   author?: string;
   handout?: string;
 }
 
 type ParsedStructure = Array<[string, unknown]>;
 
-function stringifyField(value: unknown): string | null {
+// Convert parser output to QuestionFieldValue (string or structured)
+function convertParserField(value: unknown): QuestionFieldValue | null {
   if (value === undefined || value === null) return null;
   if (typeof value === "string") return value;
+
   if (Array.isArray(value)) {
-    return value.map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join("\n");
+    // Check if it's a duplet/blitz format with nested array: [header, [item1, item2, ...]]
+    if (
+      value.length === 2 &&
+      typeof value[0] === "string" &&
+      Array.isArray(value[1]) &&
+      value[1].every((item) => typeof item === "string")
+    ) {
+      const structured: StructuredField = {
+        header: value[0],
+        items: value[1] as string[],
+      };
+      return structured;
+    }
+
+    // Check if it's a plain array of strings (e.g., answers: ["First", "Second"])
+    if (value.every((item) => typeof item === "string")) {
+      if (value.length > 1) {
+        const structured: StructuredField = {
+          items: value as string[],
+        };
+        return structured;
+      }
+      return value.join("\n");
+    }
   }
-  return JSON.stringify(value);
+
+  // Fallback: convert to string
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+// Convert source field (can be string or array)
+function convertSourceField(value: unknown): string | string[] | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value as string[];
+  }
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+// Detect question type from parsed data
+function detectParsedQuestionType(question: QuestionFieldValue): QuestionType {
+  if (typeof question === "string") {
+    const lower = question.toLowerCase();
+    if (lower.startsWith("дуплет") || lower.includes("\nдуплет")) return "duplet";
+    if (lower.startsWith("блиц") || lower.includes("\nблиц")) return "blitz";
+    return "regular";
+  }
+
+  // Structured field
+  const header = question.header?.toLowerCase() || "";
+  if (header.includes("дуплет")) return "duplet";
+  if (header.includes("блиц")) return "blitz";
+  if (question.items.length === 2) return "duplet";
+  if (question.items.length >= 3) return "blitz";
+  return "regular";
 }
 
 export function usePackageImport() {
@@ -118,40 +176,51 @@ export function usePackageImport() {
         } else if (type === "Question" && typeof value === "object" && value !== null) {
           const q = value as ParsedQuestion;
 
-          const questionStr = stringifyField(q.question) ?? "";
-          const answerStr = stringifyField(q.answer) ?? undefined;
-          const zachetStr = stringifyField(q.zachet) ?? undefined;
-          const nezachetStr = stringifyField(q.nezachet) ?? undefined;
-          const commentStr = stringifyField(q.comment) ?? undefined;
-          const sourceStr = stringifyField(q.source) ?? undefined;
-          const authorStr = stringifyField(q.author) ?? undefined;
-          const handoutStr = stringifyField(q.handout) ?? undefined;
+          const questionField = convertParserField(q.question) ?? "";
+          const answerField = convertParserField(q.answer) ?? undefined;
+          const zachetStr = typeof q.zachet === "string" ? q.zachet : undefined;
+          const nezachetStr = typeof q.nezachet === "string" ? q.nezachet : undefined;
+          const commentStr = typeof q.comment === "string" ? q.comment : undefined;
+          const sourceField = convertSourceField(q.source) ?? undefined;
+          const authorStr = typeof q.author === "string" ? q.author : undefined;
+          const handoutStr = typeof q.handout === "string" ? q.handout : undefined;
+
+          // Detect question type
+          const questionType = detectParsedQuestionType(questionField);
 
           const questionData = await prepareQuestionCreate(masterKey, {
+            type: questionType,
             number:
               typeof q.number === "number"
                 ? q.number
                 : typeof q.number === "string"
                   ? Number.parseInt(q.number, 10) || undefined
                   : undefined,
-            question: questionStr,
-            answer: answerStr,
+            question: questionField,
+            answer: answerField,
             zachet: zachetStr,
             nezachet: nezachetStr,
             comment: commentStr,
-            source: sourceStr,
+            source: sourceField,
             author: authorStr,
             handout: handoutStr,
           });
 
+          // Helper to get text from field for image matching
+          const getFieldText = (field: QuestionFieldValue | null | undefined): string => {
+            if (!field) return "";
+            if (typeof field === "string") return field;
+            return [field.header || "", ...field.items].join(" ");
+          };
+
           // Combine all text fields for image matching
           const combinedText = [
-            questionStr,
-            answerStr,
+            getFieldText(questionField),
+            getFieldText(answerField),
             zachetStr,
             nezachetStr,
             commentStr,
-            sourceStr,
+            Array.isArray(sourceField) ? sourceField.join(" ") : sourceField,
             authorStr,
             handoutStr,
           ]

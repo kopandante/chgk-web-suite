@@ -10,7 +10,14 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
-import type { Image, Package, Question, Tour } from "@/lib/db/encrypted-client";
+import {
+  type Image,
+  isStructuredField,
+  type Package,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 // Convert base64 string to Uint8Array
@@ -75,6 +82,28 @@ function stripImagePlaceholders(text: string): string {
 // Restore underscores from parser placeholder
 function restoreUnderscores(text: string): string {
   return text.replace(/\$\$UNDERSCORE\$\$/g, "_");
+}
+
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
 }
 
 // Parse formatting markers and return array of runs with styles
@@ -303,15 +332,16 @@ export async function exportToDocx(
       }
 
       // Question text
+      const questionText = fieldValueToString(question.question);
       children.push(
         new Paragraph({
-          children: createTextRuns(question.question, options),
+          children: createTextRuns(questionText, options),
           spacing: { after: 120 },
         }),
       );
 
       // Images in question
-      const questionImages = extractImageIds(question.question);
+      const questionImages = extractImageIds(questionText);
       for (const imgId of questionImages) {
         const img = imageMap.get(imgId);
         if (img?.data) {
@@ -364,9 +394,10 @@ export async function exportToDocx(
       for (let i = 0; i < tourQuestions.length; i++) {
         const question = tourQuestions[i];
         const questionNumber = question.number ?? i + 1;
+        const answerStr = fieldValueToString(question.answer);
 
-        if (question.answer) {
-          const answerText = useDots ? generateDotsPlaceholder() : question.answer;
+        if (answerStr) {
+          const answerText = useDots ? generateDotsPlaceholder() : answerStr;
           children.push(
             new Paragraph({
               children: [
@@ -429,7 +460,8 @@ export async function exportToDocx(
           );
         }
 
-        if (options.includeSource && question.source) {
+        const sourceStr = sourceToString(question.source);
+        if (options.includeSource && sourceStr) {
           children.push(
             new Paragraph({
               children: [
@@ -441,7 +473,7 @@ export async function exportToDocx(
                   color: answerColor,
                 }),
                 ...createTextRuns(
-                  question.source,
+                  sourceStr,
                   { ...options, fontSize: options.fontSize - 1 },
                   answerColor,
                 ),

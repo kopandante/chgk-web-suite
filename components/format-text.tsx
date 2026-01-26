@@ -2,6 +2,7 @@
 
 import { createContext, Fragment, useContext } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
+import { isStructuredField, type QuestionFieldValue } from "@/lib/db/encrypted-client";
 import { QuestionImageByFilename } from "./question-image";
 
 // Context to pass questionId through the component tree
@@ -183,7 +184,19 @@ interface FormatTextProps {
 }
 
 /**
+ * Check if line is a numbered list item (e.g., "1. Text" or "2) Text")
+ */
+function parseNumberedListItem(line: string): { number: number; text: string } | null {
+  const match = line.match(/^(\d+)[.)]\s+(.+)$/);
+  if (match) {
+    return { number: Number.parseInt(match[1], 10), text: match[2] };
+  }
+  return null;
+}
+
+/**
  * Format text: apply formatting (_italic_, __bold__, etc.), make URLs clickable, render images
+ * Handles duplets/blitzes with numbered sub-questions
  */
 export function FormatText({ text, className, questionId }: FormatTextProps) {
   if (!text) return null;
@@ -191,14 +204,39 @@ export function FormatText({ text, className, questionId }: FormatTextProps) {
   // Split by newlines and process each line
   const lines = text.split("\n");
 
+  // Check if this looks like a duplet/blitz (has numbered items after header)
+  const isDupletOrBlitz =
+    lines.length > 1 &&
+    (lines[0].toLowerCase().includes("дуплет") || lines[0].toLowerCase().includes("блиц"));
+
+  // Check if all lines are numbered (for answers)
+  const allNumbered = lines.length > 1 && lines.every((line) => parseNumberedListItem(line));
+
   const content = (
     <span className={className}>
-      {lines.map((line, lineIndex) => (
-        <Fragment key={lineIndex}>
-          {lineIndex > 0 && <br />}
-          {parseTextWithLinksAndImages(line)}
-        </Fragment>
-      ))}
+      {lines.map((line, lineIndex) => {
+        const listItem = parseNumberedListItem(line);
+
+        // Format numbered items with indent (for duplets/blitzes or numbered answers)
+        if ((isDupletOrBlitz || allNumbered) && listItem) {
+          return (
+            <Fragment key={lineIndex}>
+              {lineIndex > 0 && <br />}
+              <span className={allNumbered ? "" : "inline-block ml-4"}>
+                <span className="text-muted-foreground mr-1">{listItem.number}.</span>
+                {parseTextWithLinksAndImages(listItem.text)}
+              </span>
+            </Fragment>
+          );
+        }
+
+        return (
+          <Fragment key={lineIndex}>
+            {lineIndex > 0 && <br />}
+            {parseTextWithLinksAndImages(line)}
+          </Fragment>
+        );
+      })}
     </span>
   );
 
@@ -235,5 +273,89 @@ export function FormatSource({ source, questionId }: FormatSourceProps) {
         </li>
       ))}
     </ul>
+  );
+}
+
+interface FormatFieldProps {
+  value: QuestionFieldValue | null | undefined;
+  className?: string;
+  questionId?: Id<"questions">;
+}
+
+/**
+ * Format a QuestionFieldValue (string or structured field)
+ * Handles both regular text and duplet/blitz structures
+ */
+export function FormatField({ value, className, questionId }: FormatFieldProps) {
+  if (!value) return null;
+
+  // String value - delegate to FormatText
+  if (typeof value === "string") {
+    return <FormatText text={value} className={className} questionId={questionId} />;
+  }
+
+  // Structured field (duplet/blitz)
+  if (!isStructuredField(value)) return null;
+
+  const content = (
+    <div className={className}>
+      {value.header && (
+        <div className="font-medium mb-2">
+          <FormatText text={value.header} questionId={questionId} />
+        </div>
+      )}
+      <div className="space-y-2">
+        {value.items.map((item, index) => (
+          <div key={index} className="flex gap-2">
+            <span className="text-muted-foreground shrink-0">{index + 1}.</span>
+            <span className="whitespace-pre-wrap">
+              <FormatText text={item} questionId={questionId} />
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Wrap with context if questionId is provided
+  if (questionId) {
+    return <QuestionContext.Provider value={questionId}>{content}</QuestionContext.Provider>;
+  }
+
+  return content;
+}
+
+interface FormatAnswerFieldProps {
+  value: QuestionFieldValue | null | undefined;
+  className?: string;
+  questionId?: Id<"questions">;
+}
+
+/**
+ * Format answer field (more compact for answers)
+ */
+export function FormatAnswerField({ value, className, questionId }: FormatAnswerFieldProps) {
+  if (!value) return null;
+
+  // String value - delegate to FormatText
+  if (typeof value === "string") {
+    return <FormatText text={value} className={className} questionId={questionId} />;
+  }
+
+  // Structured field (duplet/blitz answers)
+  if (!isStructuredField(value)) return null;
+
+  return (
+    <span className={className}>
+      {value.items.map((item, index) => (
+        <Fragment key={index}>
+          {index > 0 && <span className="text-muted-foreground"> | </span>}
+          <span>
+            <span className="text-muted-foreground mr-1">{index + 1}.</span>
+            <FormatText text={item} questionId={questionId} />
+          </span>
+        </Fragment>
+      ))}
+    </span>
   );
 }

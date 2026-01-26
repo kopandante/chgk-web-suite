@@ -325,9 +325,14 @@ export default function HelpPage() {
 
       {/* Contact */}
       <div className="rounded-lg border p-4 text-center text-sm text-muted-foreground">
-        Не нашли ответ? Напишите нам на{" "}
-        <a href="mailto:support@chgk-web.app" className="text-primary hover:underline">
-          support@chgk-web.app
+        Не нашли ответ? Напишите нам в Telegram:{" "}
+        <a
+          href="https://t.me/chgksuite"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          @chgksuite
         </a>
       </div>
     </div>
