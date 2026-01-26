@@ -1,7 +1,12 @@
 // Telegram export using Bot API
 // Converts questions to Telegram HTML format with spoilers
 
-import type { Question } from "@/lib/db/encrypted-client";
+import {
+  isStructuredField,
+  type Question,
+  type QuestionFieldValue,
+  type Tour,
+} from "@/lib/db/encrypted-client";
 import { maybeShuffleQuestions, type RandomizeOptions } from "./utils";
 
 export interface TelegramExportOptions extends RandomizeOptions {
@@ -17,6 +22,10 @@ export interface TelegramExportOptions extends RandomizeOptions {
   includeHandout?: boolean;
   // Delay between posts in ms
   postDelay?: number;
+  // Selected tour IDs (if empty or undefined - all tours)
+  selectedTourIds?: string[];
+  // Add "Impressions" post after each tour
+  includeImpressionsPost?: boolean;
 }
 
 const DEFAULT_OPTIONS = {
@@ -72,6 +81,28 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Convert QuestionFieldValue to string for export
+function fieldValueToString(value: QuestionFieldValue | null | undefined): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    const parts: string[] = [];
+    if (value.header) parts.push(value.header);
+    value.items.forEach((item, idx) => {
+      parts.push(`${idx + 1}. ${item}`);
+    });
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// Convert source field to string
+function sourceToString(source: string | string[] | null | undefined): string {
+  if (!source) return "";
+  if (typeof source === "string") return source;
+  return source.join("\n");
+}
+
 /**
  * Format a single question for Telegram
  */
@@ -84,8 +115,12 @@ export function formatQuestionForTelegram(
   const parts: string[] = [];
   const questionNumber = question.number ?? index + 1;
 
+  // Type label
+  const typeLabel =
+    question.type === "duplet" ? " (Дуплет)" : question.type === "blitz" ? " (Блиц)" : "";
+
   // Question header
-  parts.push(`<b>Вопрос ${questionNumber}</b>`);
+  parts.push(`<b>Вопрос ${questionNumber}${typeLabel}</b>`);
   parts.push("");
 
   // Handout
@@ -95,16 +130,18 @@ export function formatQuestionForTelegram(
   }
 
   // Question text
-  parts.push(toTelegramHtml(question.question));
+  const questionText = fieldValueToString(question.question);
+  parts.push(toTelegramHtml(questionText));
   parts.push("");
 
   // Answer section
-  if (question.answer) {
-    const answerText = toTelegramHtml(question.answer);
+  const answerText = fieldValueToString(question.answer);
+  if (answerText) {
+    const answerHtml = toTelegramHtml(answerText);
     if (opts.useSpoilers) {
-      parts.push(`<b>Ответ:</b> <tg-spoiler>${answerText}</tg-spoiler>`);
+      parts.push(`<b>Ответ:</b> <tg-spoiler>${answerHtml}</tg-spoiler>`);
     } else {
-      parts.push(`<b>Ответ:</b> ${answerText}`);
+      parts.push(`<b>Ответ:</b> ${answerHtml}`);
     }
   }
 
@@ -129,8 +166,9 @@ export function formatQuestionForTelegram(
   }
 
   // Source
-  if (opts.includeSource && question.source) {
-    const sourceText = toTelegramHtml(question.source);
+  const sourceStr = sourceToString(question.source);
+  if (opts.includeSource && sourceStr) {
+    const sourceText = toTelegramHtml(sourceStr);
     if (opts.useSpoilers) {
       parts.push(`<i>Источник:</i> <tg-spoiler>${sourceText}</tg-spoiler>`);
     } else {
@@ -192,11 +230,19 @@ export async function testBotConnection(): Promise<{
 }
 
 /**
+ * Format impressions post for a tour
+ */
+export function formatImpressionsPost(tourNumber: number): string {
+  return `<b>Общие впечатления от тура ${tourNumber}</b>\n\nПоделитесь впечатлениями в комментариях.`;
+}
+
+/**
  * Export questions to Telegram channel
  * Stops on first error
  */
 export async function exportToTelegram(
   questions: Question[],
+  tours: Tour[],
   options: TelegramExportOptions,
   onProgress?: (current: number, total: number) => void,
 ): Promise<{ success: number; failed: number; errors: string[]; stopped: boolean }> {
@@ -205,29 +251,128 @@ export async function exportToTelegram(
   let success = 0;
   let stopped = false;
 
+  // Filter by selected tours
+  let filteredQuestions = questions;
+  if (options.selectedTourIds && options.selectedTourIds.length > 0) {
+    const selectedSet = new Set(options.selectedTourIds);
+    filteredQuestions = questions.filter((q) => q.tour_id === null || selectedSet.has(q.tour_id));
+  }
+
   // Apply randomization if enabled
-  const processedQuestions = maybeShuffleQuestions(questions, options);
+  const processedQuestions = maybeShuffleQuestions(filteredQuestions, options);
 
-  for (let i = 0; i < processedQuestions.length; i++) {
-    const question = processedQuestions[i];
-    const text = formatQuestionForTelegram(question, i, opts);
+  // Filter tours based on selection
+  let filteredTours = tours;
+  if (options.selectedTourIds && options.selectedTourIds.length > 0) {
+    const selectedSet = new Set(options.selectedTourIds);
+    filteredTours = tours.filter((t) => selectedSet.has(t.id));
+  }
 
-    const result = await sendToTelegram(opts.channelId, text);
+  // Calculate total posts (questions + impressions posts if enabled)
+  const impressionsPostCount =
+    opts.includeImpressionsPost && filteredTours.length > 0 ? filteredTours.length : 0;
+  const totalPosts = processedQuestions.length + impressionsPostCount;
 
-    if (result.ok) {
-      success++;
-    } else {
-      errors.push(`Вопрос ${question.number ?? i + 1}: ${result.error}`);
-      stopped = true;
-      onProgress?.(i + 1, processedQuestions.length);
-      break; // Останавливаемся при первой ошибке
+  let currentPost = 0;
+
+  // Group questions by tour and send with impressions posts
+  if (opts.includeImpressionsPost && filteredTours.length > 0) {
+    for (let tourIdx = 0; tourIdx < filteredTours.length; tourIdx++) {
+      const tour = filteredTours[tourIdx];
+      const tourQuestions = processedQuestions.filter((q) => q.tour_id === tour.id);
+
+      // Send tour questions
+      for (let i = 0; i < tourQuestions.length; i++) {
+        const question = tourQuestions[i];
+        const text = formatQuestionForTelegram(question, i, opts);
+
+        const result = await sendToTelegram(opts.channelId, text);
+
+        if (result.ok) {
+          success++;
+        } else {
+          errors.push(`Вопрос ${question.number ?? i + 1}: ${result.error}`);
+          stopped = true;
+          onProgress?.(currentPost + 1, totalPosts);
+          return { success, failed: 1, errors, stopped };
+        }
+
+        currentPost++;
+        onProgress?.(currentPost, totalPosts);
+
+        if (opts.postDelay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
+        }
+      }
+
+      // Send impressions post after tour
+      const impressionsText = formatImpressionsPost(tourIdx + 1);
+      const impressionsResult = await sendToTelegram(opts.channelId, impressionsText);
+
+      if (impressionsResult.ok) {
+        success++;
+      } else {
+        errors.push(`Пост впечатлений тура ${tourIdx + 1}: ${impressionsResult.error}`);
+        stopped = true;
+        onProgress?.(currentPost + 1, totalPosts);
+        return { success, failed: 1, errors, stopped };
+      }
+
+      currentPost++;
+      onProgress?.(currentPost, totalPosts);
+
+      // Delay after impressions post (except for last tour)
+      if (tourIdx < filteredTours.length - 1 && opts.postDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
+      }
     }
 
-    onProgress?.(i + 1, processedQuestions.length);
+    // Handle questions without tour
+    const questionsWithoutTour = processedQuestions.filter((q) => q.tour_id === null);
+    for (let i = 0; i < questionsWithoutTour.length; i++) {
+      const question = questionsWithoutTour[i];
+      const text = formatQuestionForTelegram(question, i, opts);
 
-    // Delay between posts to avoid rate limiting
-    if (i < processedQuestions.length - 1 && opts.postDelay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
+      const result = await sendToTelegram(opts.channelId, text);
+
+      if (result.ok) {
+        success++;
+      } else {
+        errors.push(`Вопрос ${question.number ?? i + 1}: ${result.error}`);
+        stopped = true;
+        onProgress?.(currentPost + 1, totalPosts);
+        return { success, failed: 1, errors, stopped };
+      }
+
+      currentPost++;
+      onProgress?.(currentPost, totalPosts);
+
+      if (i < questionsWithoutTour.length - 1 && opts.postDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
+      }
+    }
+  } else {
+    // Original logic - all questions sequentially
+    for (let i = 0; i < processedQuestions.length; i++) {
+      const question = processedQuestions[i];
+      const text = formatQuestionForTelegram(question, i, opts);
+
+      const result = await sendToTelegram(opts.channelId, text);
+
+      if (result.ok) {
+        success++;
+      } else {
+        errors.push(`Вопрос ${question.number ?? i + 1}: ${result.error}`);
+        stopped = true;
+        onProgress?.(i + 1, processedQuestions.length);
+        break;
+      }
+
+      onProgress?.(i + 1, processedQuestions.length);
+
+      if (i < processedQuestions.length - 1 && opts.postDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, opts.postDelay));
+      }
     }
   }
 

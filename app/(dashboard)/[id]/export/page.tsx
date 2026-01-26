@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
+  AlertTriangle,
   Braces,
   Check,
   Database,
@@ -104,12 +105,21 @@ export default function ExportPackagePage() {
     includeAuthor: true,
     includeHandout: true,
     postDelay: 3000,
+    includeImpressionsPost: false,
   });
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [selectedTourIds, setSelectedTourIds] = useState<string[]>([]);
   const [telegramProgress, setTelegramProgress] = useState<{
     current: number;
     total: number;
   } | null>(null);
+
+  // Initialize selectedTourIds when tours are loaded
+  useEffect(() => {
+    if (tours && tours.length > 0) {
+      setSelectedTourIds(tours.map((t) => t.id));
+    }
+  }, [tours]);
 
   // Map images
   useEffect(() => {
@@ -250,17 +260,30 @@ export default function ExportPackagePage() {
       if (!selectedChannel?.channelId) {
         throw new Error("Channel not selected");
       }
-      setTelegramProgress({ current: 0, total: questions.length });
+      // Calculate total based on selected tours and impressions option
+      const filteredQuestions =
+        selectedTourIds.length > 0
+          ? questions.filter((q) => q.tour_id === null || selectedTourIds.includes(q.tour_id))
+          : questions;
+      const selectedTours = tours?.filter((t) => selectedTourIds.includes(t.id)) || [];
+      const impressionsCount =
+        telegramOptions.includeImpressionsPost && selectedTours.length > 0
+          ? selectedTours.length
+          : 0;
+      const total = filteredQuestions.length + impressionsCount;
+
+      setTelegramProgress({ current: 0, total });
       const result = await exportToTelegram(
         questions,
+        tours || [],
         {
           channelId: selectedChannel.channelId,
           channelTitle: selectedChannel.channelTitle || "",
+          selectedTourIds: selectedTourIds.length > 0 ? selectedTourIds : undefined,
           ...telegramOptions,
         } as TelegramExportOptions,
         (current, total) => setTelegramProgress({ current, total }),
       );
-      setTelegramProgress(null);
       return result;
     },
     onSuccess: (result) => {
@@ -271,8 +294,10 @@ export default function ExportPackagePage() {
       }
     },
     onError: (err) => {
-      setTelegramProgress(null);
       toast.error(err instanceof Error ? err.message : "Ошибка экспорта");
+    },
+    onSettled: () => {
+      setTelegramProgress(null);
     },
   });
 
@@ -548,6 +573,13 @@ export default function ExportPackagePage() {
                         <span>{channel.channelTitle || channel.channelId}</span>
                       </button>
                     ))}
+                    <Link
+                      href="/settings"
+                      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Настроить каналы
+                    </Link>
                   </div>
                 ) : (
                   <div className="mt-2 rounded-md border border-dashed p-4 text-center">
@@ -587,6 +619,32 @@ export default function ExportPackagePage() {
                 </select>
               </div>
 
+              {/* Tour selection */}
+              {tours && tours.length > 0 && (
+                <div>
+                  <span className="text-sm font-medium">Туры для публикации</span>
+                  <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                    {tours.map((tour, idx) => (
+                      <label key={tour.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedTourIds.includes(tour.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTourIds((prev) => [...prev, tour.id]);
+                            } else {
+                              setSelectedTourIds((prev) => prev.filter((id) => id !== tour.id));
+                            }
+                          }}
+                          className="rounded border-input"
+                        />
+                        Тур {idx + 1}: {tour.title || "Без названия"}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <span className="text-sm font-medium">Опции</span>
                 <div className="grid grid-cols-2 gap-2">
@@ -617,10 +675,40 @@ export default function ExportPackagePage() {
                   ))}
                 </div>
               </div>
+
+              {/* Impressions post option */}
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={telegramOptions.includeImpressionsPost}
+                    onChange={(e) =>
+                      setTelegramOptions((prev) => ({
+                        ...prev,
+                        includeImpressionsPost: e.target.checked,
+                      }))
+                    }
+                    disabled={!tours || tours.length === 0}
+                    className="rounded border-input"
+                  />
+                  Добавлять пост «Общие впечатления» после каждого тура
+                </label>
+                {(!tours || tours.length === 0) && (
+                  <p className="text-xs text-muted-foreground mt-1 ml-6">
+                    Недоступно для пакетов без туров
+                  </p>
+                )}
+              </div>
             </div>
 
             {telegramProgress && (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <p className="text-sm">
+                    Не закрывайте и не покидайте эту страницу до завершения отправки
+                  </p>
+                </div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                   <div
                     className="h-full bg-primary transition-all"
@@ -641,7 +729,8 @@ export default function ExportPackagePage() {
               disabled={
                 exportTelegramMutation.isPending ||
                 !selectedChannel?.channelId ||
-                !questions?.length
+                !questions?.length ||
+                (tours && tours.length > 0 && selectedTourIds.length === 0)
               }
               className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
@@ -651,7 +740,21 @@ export default function ExportPackagePage() {
                   Отправка...
                 </span>
               ) : (
-                `Отправить ${questions?.length || 0} вопросов в Telegram`
+                (() => {
+                  const filteredQuestions =
+                    selectedTourIds.length > 0
+                      ? questions?.filter(
+                          (q) => q.tour_id === null || selectedTourIds.includes(q.tour_id),
+                        ) || []
+                      : questions || [];
+                  const selectedTours = tours?.filter((t) => selectedTourIds.includes(t.id)) || [];
+                  const impressionsCount =
+                    telegramOptions.includeImpressionsPost && selectedTours.length > 0
+                      ? selectedTours.length
+                      : 0;
+                  const total = filteredQuestions.length + impressionsCount;
+                  return `Отправить ${total} постов в Telegram`;
+                })()
               )}
             </button>
           </div>
