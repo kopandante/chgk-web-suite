@@ -1,7 +1,7 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
-import { useMutation as useConvexMutation, useQuery as useConvexQuery } from "convex/react";
+import { useMutation as useConvexMutation } from "convex/react";
 import {
   BookOpen,
   ChevronRight,
@@ -49,8 +49,8 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useEncryption } from "@/hooks/use-encryption";
-import { decryptPackage } from "@/lib/db/encrypted-client";
 import { useHeaderActionsStore } from "@/stores/header-actions";
+import { usePackageStore } from "@/stores/package";
 
 const navItems = [
   { href: "/packages", label: "Пакеты", icon: Package },
@@ -63,11 +63,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const { isReady, masterKey } = useEncryption();
+  const { isReady } = useEncryption();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const headerActions = useHeaderActionsStore((state) => state.actions);
-  const [packageTitle, setPackageTitle] = useState<string | null>(null);
+  const storePkg = usePackageStore((state) => state.pkg);
+  const storePackageId = usePackageStore((state) => state.packageId);
 
   // Извлекаем packageId из pathname
   const packageIdMatch = pathname.match(/^\/([^/]+)/);
@@ -75,6 +76,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     packageIdMatch && !["packages", "settings", "help", "new"].includes(packageIdMatch[1])
       ? (packageIdMatch[1] as Id<"packages">)
       : null;
+
+  // Получаем название пакета из store (если ID совпадает)
+  const packageTitle = packageId && storePackageId === packageId ? (storePkg?.title ?? null) : null;
 
   // Проверяем, находимся ли на странице просмотра пакета (не edit/export)
   const isPackageViewPage = packageId && pathname.match(/^\/[^/]+$/);
@@ -87,26 +91,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push("/packages");
   };
 
-  const encryptedPkg = useConvexQuery(api.packages.get, packageId ? { id: packageId } : "skip");
-
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Сбрасываем название при смене пакета
-  // biome-ignore lint/correctness/useExhaustiveDependencies: packageId нужен для сброса при смене пакета
-  useEffect(() => {
-    setPackageTitle(null);
-  }, [packageId]);
-
-  useEffect(() => {
-    if (!encryptedPkg || !masterKey) {
-      return;
-    }
-    decryptPackage(masterKey, encryptedPkg)
-      .then((pkg) => setPackageTitle(pkg.title))
-      .catch(() => setPackageTitle(null));
-  }, [encryptedPkg, masterKey]);
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");

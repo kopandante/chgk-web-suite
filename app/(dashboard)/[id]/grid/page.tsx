@@ -21,7 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation as useConvexMutation } from "convex/react";
-import { GripVertical, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { GripVertical, Loader2, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -51,8 +51,6 @@ interface QuestionFormData {
   source: string | string[] | null;
   author: string | null;
   handout: string | null;
-  isNew?: boolean;
-  isDeleted?: boolean;
 }
 
 // Compact sortable question card
@@ -60,13 +58,11 @@ function SortableQuestionCard({
   question,
   index,
   onEdit,
-  onRemove,
   hasError,
 }: {
   question: QuestionFormData;
   index: number;
   onEdit: () => void;
-  onRemove: () => void;
   hasError: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -80,16 +76,18 @@ function SortableQuestionCard({
     opacity: isDragging ? 0.3 : 1,
   };
 
+  const questionText = getFieldDisplayText(question.question) || "Новый вопрос";
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`rounded-lg border bg-background ${hasError ? "border-destructive" : ""}`}
     >
-      <div className="flex items-center gap-2 p-2">
+      <div className="flex gap-2 p-2">
         <button
           type="button"
-          className="cursor-grab active:cursor-grabbing touch-none p-1"
+          className="cursor-grab active:cursor-grabbing touch-none p-1 shrink-0 self-start"
           {...attributes}
           {...listeners}
         >
@@ -98,23 +96,12 @@ function SortableQuestionCard({
         <button
           type="button"
           onClick={onEdit}
-          className="flex items-center gap-2 flex-1 text-left hover:bg-muted/50 -my-1 py-1 px-1 rounded min-w-0"
+          className="flex-1 text-left hover:bg-muted/50 -my-1 py-1 px-1 rounded min-w-0"
         >
-          <span className="font-medium text-xs shrink-0">#{question.number ?? index + 1}</span>
-          <span className="text-xs text-muted-foreground truncate">
-            {(() => {
-              const text = getFieldDisplayText(question.question);
-              return text.slice(0, 50) || "Новый вопрос";
-            })()}
-            {getFieldDisplayText(question.question).length > 50 ? "..." : ""}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="p-1 hover:bg-destructive/10 text-destructive rounded shrink-0"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            <span className="font-medium text-foreground">#{question.number ?? index + 1}</span>{" "}
+            {questionText}
+          </p>
         </button>
       </div>
     </div>
@@ -143,7 +130,6 @@ function TourColumn({
   index,
   questions,
   onEdit,
-  onRemove,
   onAdd,
   errors,
 }: {
@@ -151,8 +137,7 @@ function TourColumn({
   index: number;
   questions: QuestionFormData[];
   onEdit: (id: string) => void;
-  onRemove: (id: string) => void;
-  onAdd: (tourId: Id<"tours"> | null) => void;
+  onAdd: () => void;
   errors: Record<string, string>;
 }) {
   const tourId = tour?.id ?? null;
@@ -178,7 +163,7 @@ function TourColumn({
         </h3>
         <button
           type="button"
-          onClick={() => onAdd(tourId)}
+          onClick={onAdd}
           className="p-1 rounded hover:bg-muted"
           title="Добавить вопрос"
         >
@@ -193,7 +178,6 @@ function TourColumn({
               question={q}
               index={idx}
               onEdit={() => onEdit(q.id)}
-              onRemove={() => onRemove(q.id)}
               hasError={!!errors[q.id]}
             />
           ))}
@@ -212,13 +196,11 @@ function TourColumn({
 function NoTourColumn({
   questions,
   onEdit,
-  onRemove,
   onAdd,
   errors,
 }: {
   questions: QuestionFormData[];
   onEdit: (id: string) => void;
-  onRemove: (id: string) => void;
   onAdd: () => void;
   errors: Record<string, string>;
 }) {
@@ -257,7 +239,6 @@ function NoTourColumn({
               question={q}
               index={idx}
               onEdit={() => onEdit(q.id)}
-              onRemove={() => onRemove(q.id)}
               hasError={!!errors[q.id]}
             />
           ))}
@@ -294,9 +275,7 @@ export default function EditPackagePage() {
   const router = useRouter();
 
   // Convex mutations
-  const createQuestionMutation = useConvexMutation(api.questions.create);
   const updateQuestionMutation = useConvexMutation(api.questions.update);
-  const deleteQuestionMutation = useConvexMutation(api.questions.remove);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -327,7 +306,7 @@ export default function EditPackagePage() {
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    for (const q of questions.filter((q) => !q.isDeleted)) {
+    for (const q of questions) {
       const questionText = getFieldDisplayText(q.question);
       if (!questionText.trim()) {
         newErrors[q.id] = "Текст вопроса обязателен";
@@ -346,7 +325,7 @@ export default function EditPackagePage() {
     try {
       // Group questions by tour for order calculation
       const questionsByTour = new Map<string, QuestionFormData[]>();
-      for (const q of questions.filter((q) => !q.isDeleted)) {
+      for (const q of questions) {
         const key = q.tourId ?? "no-tour";
         if (!questionsByTour.has(key)) {
           questionsByTour.set(key, []);
@@ -355,55 +334,28 @@ export default function EditPackagePage() {
       }
 
       for (const q of questions) {
-        if (q.isDeleted && !q.isNew) {
-          await deleteQuestionMutation({ id: q.id as Id<"questions"> });
-        } else if (q.isNew && !q.isDeleted) {
-          const questionData = await prepareQuestionCreate(masterKey, {
-            number: q.number ?? undefined,
-            question: q.question,
-            answer: q.answer ?? undefined,
-            zachet: q.zachet ?? undefined,
-            nezachet: q.nezachet ?? undefined,
-            comment: q.comment ?? undefined,
-            source: q.source ?? undefined,
-            author: q.author ?? undefined,
-            handout: q.handout ?? undefined,
-          });
+        const questionData = await prepareQuestionCreate(masterKey, {
+          number: q.number ?? undefined,
+          question: q.question,
+          answer: q.answer ?? undefined,
+          zachet: q.zachet ?? undefined,
+          nezachet: q.nezachet ?? undefined,
+          comment: q.comment ?? undefined,
+          source: q.source ?? undefined,
+          author: q.author ?? undefined,
+          handout: q.handout ?? undefined,
+        });
 
-          const tourQuestions = questionsByTour.get(q.tourId ?? "no-tour") ?? [];
-          const orderNum = tourQuestions.indexOf(q);
+        const tourQuestions = questionsByTour.get(q.tourId ?? "no-tour") ?? [];
+        const orderNum = tourQuestions.indexOf(q);
 
-          await createQuestionMutation({
-            packageId,
-            tourId: q.tourId ?? undefined,
-            encryptedData: questionData.encryptedData,
-            iv: questionData.iv,
-            orderNum,
-          });
-        } else if (!q.isDeleted) {
-          const questionData = await prepareQuestionCreate(masterKey, {
-            number: q.number ?? undefined,
-            question: q.question,
-            answer: q.answer ?? undefined,
-            zachet: q.zachet ?? undefined,
-            nezachet: q.nezachet ?? undefined,
-            comment: q.comment ?? undefined,
-            source: q.source ?? undefined,
-            author: q.author ?? undefined,
-            handout: q.handout ?? undefined,
-          });
-
-          const tourQuestions = questionsByTour.get(q.tourId ?? "no-tour") ?? [];
-          const orderNum = tourQuestions.indexOf(q);
-
-          await updateQuestionMutation({
-            id: q.id as Id<"questions">,
-            encryptedData: questionData.encryptedData,
-            iv: questionData.iv,
-            tourId: q.tourId ?? undefined,
-            orderNum,
-          });
-        }
+        await updateQuestionMutation({
+          id: q.id as Id<"questions">,
+          encryptedData: questionData.encryptedData,
+          iv: questionData.iv,
+          tourId: q.tourId ?? undefined,
+          orderNum,
+        });
       }
 
       setHasChanges(false);
@@ -416,42 +368,16 @@ export default function EditPackagePage() {
     }
   };
 
-  const addQuestion = useCallback(
-    async (tourId: Id<"tours"> | null = null) => {
-      if (!masterKey) return;
+  const addQuestion = useCallback(() => {
+    router.push(`/${packageId}/grid/new`);
+  }, [packageId, router]);
 
-      try {
-        const tourQuestions = questions.filter((q) => !q.isDeleted && q.tourId === tourId);
-        const maxNumber = Math.max(0, ...tourQuestions.map((q) => q.number || 0));
-
-        const questionData = await prepareQuestionCreate(masterKey, {
-          number: maxNumber + 1,
-          question: "",
-        });
-
-        const newId = await createQuestionMutation({
-          packageId,
-          tourId: tourId ?? undefined,
-          encryptedData: questionData.encryptedData,
-          iv: questionData.iv,
-          orderNum: tourQuestions.length,
-        });
-
-        router.push(`/${packageId}/grid/${newId}`);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Ошибка создания вопроса");
-      }
-    },
-    [masterKey, questions, packageId, createQuestionMutation, router],
-  );
-
-  // Header actions - add to first tour or no-tour
+  // Header actions
   useEffect(() => {
-    const defaultTourId = tours.length > 0 ? tours[0].id : null;
     setHeaderActions(
       <button
         type="button"
-        onClick={() => addQuestion(defaultTourId)}
+        onClick={addQuestion}
         className="btn-primary px-3 py-1.5 text-sm inline-flex items-center gap-1.5"
       >
         <Plus className="h-4 w-4" />
@@ -459,16 +385,7 @@ export default function EditPackagePage() {
       </button>,
     );
     return () => setHeaderActions(null);
-  }, [setHeaderActions, addQuestion, tours]);
-
-  const removeQuestion = (id: string) => {
-    setQuestions((prev) =>
-      prev
-        .map((q) => (q.id === id ? { ...q, isDeleted: true } : q))
-        .filter((q) => !(q.isNew && q.isDeleted)),
-    );
-    setHasChanges(true);
-  };
+  }, [setHeaderActions, addQuestion]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -515,9 +432,7 @@ export default function EditPackagePage() {
 
     if (overQuestion && activeQuestion.tourId === overQuestion.tourId) {
       setQuestions((prev) => {
-        const tourQuestions = prev.filter(
-          (q) => !q.isDeleted && q.tourId === activeQuestion.tourId,
-        );
+        const tourQuestions = prev.filter((q) => q.tourId === activeQuestion.tourId);
         const oldIndex = tourQuestions.findIndex((q) => q.id === active.id);
         const newIndex = tourQuestions.findIndex((q) => q.id === over.id);
 
@@ -527,9 +442,7 @@ export default function EditPackagePage() {
         const [moved] = reordered.splice(oldIndex, 1);
         reordered.splice(newIndex, 0, moved);
 
-        const otherQuestions = prev.filter(
-          (q) => q.isDeleted || q.tourId !== activeQuestion.tourId,
-        );
+        const otherQuestions = prev.filter((q) => q.tourId !== activeQuestion.tourId);
         return [...reordered, ...otherQuestions];
       });
       setHasChanges(true);
@@ -564,7 +477,7 @@ export default function EditPackagePage() {
     );
   }
 
-  const visibleQuestions = questions.filter((q) => !q.isDeleted);
+  const visibleQuestions = questions;
   const activeQuestion = activeId ? questions.find((q) => q.id === activeId) : null;
 
   // Group questions by tour
@@ -605,7 +518,6 @@ export default function EditPackagePage() {
                     index={idx}
                     questions={questionsByTour.get(tour.id) ?? []}
                     onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
-                    onRemove={removeQuestion}
                     onAdd={addQuestion}
                     errors={errors}
                   />
@@ -614,8 +526,7 @@ export default function EditPackagePage() {
                   <NoTourColumn
                     questions={questionsByTour.get(null) ?? []}
                     onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
-                    onRemove={removeQuestion}
-                    onAdd={() => addQuestion(null)}
+                    onAdd={addQuestion}
                     errors={errors}
                   />
                 )}
@@ -624,8 +535,7 @@ export default function EditPackagePage() {
               <NoTourColumn
                 questions={visibleQuestions}
                 onEdit={(id) => router.push(`/${packageId}/grid/${id}`)}
-                onRemove={removeQuestion}
-                onAdd={() => addQuestion(null)}
+                onAdd={addQuestion}
                 errors={errors}
               />
             )}

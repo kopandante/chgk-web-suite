@@ -20,17 +20,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { usePackageSync } from "@/hooks/use-package-sync";
 import { useTelegramChannels } from "@/hooks/use-telegram-channel";
 import {
-  decryptPackage,
-  decryptQuestions,
-  decryptTours,
   type Image,
+  isStructuredField,
   loadImagesForExport,
   mapImages,
-  type Package,
-  type Question,
-  type Tour,
+  type QuestionFieldValue,
 } from "@/lib/db/encrypted-client";
 import { downloadChgkDbFile, exportToChgkDb } from "@/lib/export/chgk-db";
 import { type DocxExportOptions, downloadBlob, exportToDocx } from "@/lib/export/docx";
@@ -41,19 +38,48 @@ import { exportToTelegram, type TelegramExportOptions } from "@/lib/export/teleg
 import type { ParsedStructure } from "@/lib/parser";
 import { compose4s } from "@/lib/parser/docx";
 import { useEncryptionStore } from "@/stores/encryption";
+import { usePackageStore } from "@/stores/package";
 
 type ExportFormat = "docx" | "pptx" | "telegram" | "4s" | "chgk-db" | "openquiz" | "reddit";
+
+// Convert QuestionFieldValue to 4s format (string or [header, items])
+function fieldTo4sFormat(
+  value: QuestionFieldValue | null | undefined,
+): string | [string, string[]] | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  if (isStructuredField(value)) {
+    if (value.header) {
+      return [value.header, value.items];
+    }
+    // No header - just return items as numbered list string
+    return value.items.map((item, idx) => `${idx + 1}. ${item}`).join("\n");
+  }
+  return undefined;
+}
+
+// Convert source to 4s format
+function sourceTo4sFormat(
+  source: string | string[] | null | undefined,
+): string | string[] | undefined {
+  if (!source) return undefined;
+  return source;
+}
 
 export default function ExportPackagePage() {
   const params = useParams();
   const packageId = params.id as Id<"packages">;
   const masterKey = useEncryptionStore((state) => state.masterKey);
 
-  const [pkg, setPkg] = useState<Package | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [tours, setTours] = useState<Tour[]>([]);
+  // Sync package data from Convex to store
+  const { isLoading: isDecrypting, notFound } = usePackageSync(packageId);
+
+  // Read data from store
+  const { pkg, tours, questions } = usePackageStore();
+
+  // Images - only needed for export, keep separate
   const [images, setImages] = useState<Image[]>([]);
-  const [isDecrypting, setIsDecrypting] = useState(true);
+  const encryptedImages = useConvexQuery(api.images.listByPackage, { packageId });
 
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat | null>(null);
   const [docxOptions, setDocxOptions] = useState<DocxExportOptions>({
@@ -84,66 +110,6 @@ export default function ExportPackagePage() {
     current: number;
     total: number;
   } | null>(null);
-
-  // Convex queries
-  const encryptedPkg = useConvexQuery(api.packages.get, { id: packageId });
-  const encryptedQuestions = useConvexQuery(api.questions.listByPackage, { packageId });
-  const encryptedTours = useConvexQuery(api.tours.listByPackage, { packageId });
-  const encryptedImages = useConvexQuery(api.images.listByPackage, { packageId });
-
-  // Decrypt package
-  useEffect(() => {
-    if (!encryptedPkg || !masterKey) {
-      setPkg(null);
-      return;
-    }
-
-    decryptPackage(masterKey, encryptedPkg)
-      .then(setPkg)
-      .catch((err) => {
-        console.error("Failed to decrypt package:", err);
-        setPkg(null);
-      });
-  }, [encryptedPkg, masterKey]);
-
-  // Decrypt questions
-  useEffect(() => {
-    if (!encryptedQuestions || !masterKey) {
-      setQuestions([]);
-      return;
-    }
-
-    decryptQuestions(masterKey, encryptedQuestions)
-      .then((decrypted) => {
-        // Sort by order_num
-        const sorted = [...decrypted].sort((a, b) => a.order_num - b.order_num);
-        setQuestions(sorted);
-      })
-      .catch((err) => {
-        console.error("Failed to decrypt questions:", err);
-        setQuestions([]);
-      });
-  }, [encryptedQuestions, masterKey]);
-
-  // Decrypt tours
-  useEffect(() => {
-    if (!encryptedTours || !masterKey) {
-      setTours([]);
-      setIsDecrypting(false);
-      return;
-    }
-
-    decryptTours(masterKey, encryptedTours)
-      .then((decrypted) => {
-        setTours(decrypted);
-        setIsDecrypting(false);
-      })
-      .catch((err) => {
-        console.error("Failed to decrypt tours:", err);
-        setTours([]);
-        setIsDecrypting(false);
-      });
-  }, [encryptedTours, masterKey]);
 
   // Map images
   useEffect(() => {
@@ -227,20 +193,20 @@ export default function ExportPackagePage() {
         }
 
         for (const q of tourQuestions) {
-          structure.push([
-            "Question",
-            {
-              number: q.number ?? undefined,
-              question: q.question,
-              answer: q.answer ?? undefined,
-              zachet: q.zachet ?? undefined,
-              nezachet: q.nezachet ?? undefined,
-              comment: q.comment ?? undefined,
-              source: q.source ?? undefined,
-              author: q.author ?? undefined,
-              handout: q.handout ?? undefined,
-            },
-          ]);
+          // Convert to 4s format compatible structure
+          const questionData = {
+            number: q.number ?? undefined,
+            question: fieldTo4sFormat(q.question),
+            answer: fieldTo4sFormat(q.answer),
+            zachet: q.zachet ?? undefined,
+            nezachet: q.nezachet ?? undefined,
+            comment: q.comment ?? undefined,
+            source: sourceTo4sFormat(q.source),
+            author: q.author ?? undefined,
+            handout: q.handout ?? undefined,
+          };
+          // biome-ignore lint/suspicious/noExplicitAny: compose4s requires tuple with any
+          structure.push(["Question", questionData] as any);
         }
       }
 
@@ -441,7 +407,7 @@ export default function ExportPackagePage() {
     exportRedditMutation.isPending;
 
   // Loading state
-  if (encryptedPkg === undefined || isDecrypting) {
+  if (isDecrypting) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
         <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -454,7 +420,7 @@ export default function ExportPackagePage() {
   }
 
   // Not found
-  if (!pkg) {
+  if (notFound || !pkg) {
     return (
       <div className="max-w-2xl mx-auto text-center py-20">
         <h1 className="text-2xl font-display font-bold">Пакет не найден</h1>

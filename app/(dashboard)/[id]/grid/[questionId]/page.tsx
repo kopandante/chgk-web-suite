@@ -134,7 +134,8 @@ function fieldToString(value: QuestionFieldValue | null | undefined): string {
 export default function EditQuestionPage() {
   const params = useParams();
   const packageId = params.id as Id<"packages">;
-  const questionId = params.questionId as Id<"questions">;
+  const questionId = params.questionId as string;
+  const isNewQuestion = questionId === "new";
 
   // Sync package data from Convex to store
   const { isLoading, notFound } = usePackageSync(packageId);
@@ -142,8 +143,8 @@ export default function EditQuestionPage() {
   // Read data from store
   const { questions } = usePackageStore();
   const question = useMemo(
-    () => questions.find((q) => q.id === questionId),
-    [questions, questionId],
+    () => (isNewQuestion ? null : questions.find((q) => q.id === questionId)),
+    [questions, questionId, isNewQuestion],
   );
 
   if (isLoading) {
@@ -168,6 +169,18 @@ export default function EditQuestionPage() {
           Вернуться к пакетам
         </Link>
       </div>
+    );
+  }
+
+  if (isNewQuestion) {
+    // Calculate next question number
+    const maxNumber = Math.max(0, ...questions.map((q) => q.number || 0));
+    return (
+      <NewQuestionForm
+        packageId={packageId}
+        nextNumber={maxNumber + 1}
+        orderNum={questions.length}
+      />
     );
   }
 
@@ -204,6 +217,7 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
     open: boolean;
     destination: string | null;
   }>({ open: false, destination: null });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const updateQuestionMutation = useConvexMutation(api.questions.update);
   const deleteQuestionMutation = useConvexMutation(api.questions.remove);
@@ -281,15 +295,15 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
     setLeaveDialog({ open: false, destination: null });
   };
 
-  const handleDelete = useCallback(async () => {
-    if (!confirm("Удалить этот вопрос?")) return;
-
+  const confirmDelete = useCallback(async () => {
     try {
       await deleteQuestionMutation({ id: question.id });
       toast.success("Вопрос удален");
       router.push(`/${packageId}/grid`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Ошибка удаления");
+    } finally {
+      setDeleteDialogOpen(false);
     }
   }, [deleteQuestionMutation, question.id, packageId, router]);
 
@@ -346,7 +360,7 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
         </Button>
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={() => setDeleteDialogOpen(true)}
           className="rounded-lg border border-destructive/50 px-3 py-1.5 text-sm text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1.5"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -355,7 +369,7 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
       </div>,
     );
     return () => setHeaderActions(null);
-  }, [setHeaderActions, form.state.isDirty, form.state.isSubmitting, form, handleDelete]);
+  }, [setHeaderActions, form.state.isDirty, form.state.isSubmitting, form]);
 
   const saveChanges = useCallback(
     async (data: QuestionFormData) => {
@@ -574,6 +588,26 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить вопрос?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вопрос #{formValues.number ?? "?"} будет удален. Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Удалить
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="space-y-4">
         <div className="grid gap-4 grid-cols-2">
           <form.Field name="number">
@@ -651,6 +685,560 @@ function QuestionForm({ question, packageId }: { question: Question; packageId: 
                   imageId={field.state.value}
                   onUpload={(imageId) => field.handleChange(imageId)}
                   onRemove={() => field.handleChange(null)}
+                />
+              )}
+            </form.Field>
+          )}
+        </div>
+
+        {/* Question field */}
+        {isStructured && isStructuredField(formValues.question) ? (
+          (() => {
+            const structuredQuestion = formValues.question;
+            return (
+              <div className="space-y-3">
+                <span className="text-sm font-medium block">
+                  Текст вопроса <span className="text-destructive">*</span>
+                </span>
+                <label className="block">
+                  <span className="text-xs text-muted-foreground">Вступление</span>
+                  <textarea
+                    value={structuredQuestion.header ?? ""}
+                    onChange={(e) => {
+                      const newQuestion = {
+                        ...structuredQuestion,
+                        header: e.target.value || undefined,
+                      };
+                      form.setFieldValue("question", newQuestion);
+                    }}
+                    rows={2}
+                    placeholder={formValues.type === "duplet" ? "Дуплет." : "Блиц."}
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  />
+                </label>
+                {Array.from({ length: itemCount }).map((_, idx) => (
+                  <label key={idx} className="block">
+                    <span className="text-xs text-muted-foreground">
+                      Вопрос {formValues.type === "duplet" ? "дуплета" : "блица"} {idx + 1}
+                    </span>
+                    <textarea
+                      value={structuredQuestion.items[idx] ?? ""}
+                      onChange={(e) => {
+                        const newItems = [...structuredQuestion.items];
+                        newItems[idx] = e.target.value;
+                        form.setFieldValue("question", {
+                          ...structuredQuestion,
+                          items: newItems,
+                        });
+                      }}
+                      rows={4}
+                      className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                        idx === 0 && error ? "border-destructive" : ""
+                      }`}
+                    />
+                  </label>
+                ))}
+                {error && <p className="text-xs text-destructive">{error}</p>}
+              </div>
+            );
+          })()
+        ) : (
+          <form.Field name="question">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">
+                  Текст вопроса <span className="text-destructive">*</span>
+                </span>
+                <textarea
+                  value={typeof field.state.value === "string" ? field.state.value : ""}
+                  onChange={(e) => {
+                    field.handleChange(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  onBlur={field.handleBlur}
+                  rows={6}
+                  className={`mt-1 w-full rounded-md border px-3 py-2 text-sm ${
+                    error ? "border-destructive" : ""
+                  }`}
+                />
+                {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+              </label>
+            )}
+          </form.Field>
+        )}
+
+        {/* Answer field */}
+        {isStructured && isStructuredField(formValues.answer) ? (
+          (() => {
+            const structuredAnswer = formValues.answer;
+            return (
+              <div className="space-y-3">
+                <span className="text-sm font-medium block">Ответы</span>
+                {Array.from({ length: itemCount }).map((_, idx) => (
+                  <label key={idx} className="block">
+                    <span className="text-xs text-muted-foreground">Ответ {idx + 1}</span>
+                    <input
+                      type="text"
+                      value={structuredAnswer.items[idx] ?? ""}
+                      onChange={(e) => {
+                        const newItems = [...structuredAnswer.items];
+                        newItems[idx] = e.target.value;
+                        form.setFieldValue("answer", {
+                          ...structuredAnswer,
+                          items: newItems,
+                        });
+                      }}
+                      className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                ))}
+              </div>
+            );
+          })()
+        ) : (
+          <form.Field name="answer">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">Ответ</span>
+                <input
+                  type="text"
+                  value={
+                    typeof field.state.value === "string"
+                      ? field.state.value
+                      : (fieldToString(field.state.value) ?? "")
+                  }
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                  onBlur={field.handleBlur}
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+          </form.Field>
+        )}
+
+        <div className="grid gap-4 grid-cols-2">
+          <form.Field name="zachet">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">Зачет</span>
+                <input
+                  type="text"
+                  value={field.state.value ?? ""}
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                  onBlur={field.handleBlur}
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+          </form.Field>
+          <form.Field name="nezachet">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">Незачет</span>
+                <input
+                  type="text"
+                  value={field.state.value ?? ""}
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                  onBlur={field.handleBlur}
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+          </form.Field>
+        </div>
+
+        <form.Field name="comment">
+          {(field) => (
+            <label className="block">
+              <span className="text-sm font-medium">Комментарий</span>
+              <textarea
+                value={field.state.value ?? ""}
+                onChange={(e) => field.handleChange(e.target.value || null)}
+                onBlur={field.handleBlur}
+                rows={6}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+        </form.Field>
+
+        <form.Field name="source">
+          {(field) => (
+            <label className="block">
+              <span className="text-sm font-medium">Источник</span>
+              <textarea
+                value={
+                  Array.isArray(field.state.value)
+                    ? field.state.value.join("\n")
+                    : (field.state.value ?? "")
+                }
+                onChange={(e) => field.handleChange(e.target.value || null)}
+                onBlur={field.handleBlur}
+                rows={2}
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+        </form.Field>
+      </div>
+    </div>
+  );
+}
+
+function NewQuestionForm({
+  packageId,
+  nextNumber,
+  orderNum,
+}: {
+  packageId: Id<"packages">;
+  nextNumber: number;
+  orderNum: number;
+}) {
+  const router = useRouter();
+  const masterKey = useEncryptionStore((state) => state.masterKey);
+  const setHeaderActions = useHeaderActionsStore((state) => state.setActions);
+
+  const [error, setError] = useState<string | null>(null);
+  const [typeChangeDialog, setTypeChangeDialog] = useState<{
+    open: boolean;
+    newType: QuestionType;
+    lostItems: string[];
+  }>({ open: false, newType: "regular", lostItems: [] });
+  const [leaveDialog, setLeaveDialog] = useState<{
+    open: boolean;
+    destination: string | null;
+  }>({ open: false, destination: null });
+
+  const createQuestionMutation = useConvexMutation(api.questions.create);
+
+  const form = useForm({
+    defaultValues: {
+      type: "regular" as QuestionType,
+      number: nextNumber as number | null,
+      question: "" as QuestionFieldValue,
+      answer: null as QuestionFieldValue | null,
+      zachet: null as string | null,
+      nezachet: null as string | null,
+      comment: null as string | null,
+      source: null as string | string[] | null,
+      author: null as string | null,
+      handoutType: "none" as HandoutType,
+      handout: null as string | null,
+      handoutImageId: null as string | null,
+    } satisfies QuestionFormData,
+    validators: {
+      onSubmit: questionFormSchema,
+    },
+    onSubmit: async ({ value }) => {
+      await createQuestion(value);
+    },
+  });
+
+  const safeNavigate = useCallback(
+    (destination: string) => {
+      if (form.state.isDirty) {
+        setLeaveDialog({ open: true, destination });
+      } else {
+        router.push(destination);
+      }
+    },
+    [form.state.isDirty, router],
+  );
+
+  const handleSaveAndLeave = async () => {
+    await form.handleSubmit();
+  };
+
+  const handleDiscard = () => {
+    form.reset();
+    if (leaveDialog.destination) {
+      router.push(leaveDialog.destination);
+    }
+    setLeaveDialog({ open: false, destination: null });
+  };
+
+  // beforeunload handler
+  useEffect(() => {
+    if (!form.state.isDirty) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      return "Есть несохраненные изменения";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [form.state.isDirty]);
+
+  // Header actions
+  useEffect(() => {
+    setHeaderActions(
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => form.handleSubmit()}
+        disabled={!form.state.isDirty || form.state.isSubmitting}
+      >
+        {form.state.isSubmitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Save className="h-4 w-4" />
+        )}
+        <span className="ml-1.5">Создать</span>
+      </Button>,
+    );
+    return () => setHeaderActions(null);
+  }, [setHeaderActions, form.state.isDirty, form.state.isSubmitting, form]);
+
+  const createQuestion = useCallback(
+    async (data: QuestionFormData) => {
+      if (!masterKey) return;
+
+      const questionText =
+        typeof data.question === "string"
+          ? data.question
+          : isStructuredField(data.question)
+            ? data.question.items[0] || ""
+            : "";
+
+      if (!questionText.trim()) {
+        setError("Текст вопроса обязателен");
+        return;
+      }
+
+      try {
+        const questionData = await prepareQuestionCreate(masterKey, {
+          type: data.type,
+          number: data.number ?? undefined,
+          question: data.question,
+          answer: data.answer ?? undefined,
+          zachet: data.zachet ?? undefined,
+          nezachet: data.nezachet ?? undefined,
+          comment: data.comment ?? undefined,
+          source: data.source ?? undefined,
+          author: data.author ?? undefined,
+          handoutType: data.handoutType,
+          handout: data.handout ?? undefined,
+          handoutImageId: data.handoutImageId ?? undefined,
+        });
+
+        const newId = await createQuestionMutation({
+          packageId,
+          encryptedData: questionData.encryptedData,
+          iv: questionData.iv,
+          orderNum,
+        });
+
+        toast.success("Вопрос создан");
+
+        // Navigate to the created question or back to grid
+        if (leaveDialog.destination) {
+          router.push(leaveDialog.destination);
+        } else {
+          router.replace(`/${packageId}/grid/${newId}`);
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Ошибка создания");
+      }
+    },
+    [masterKey, packageId, orderNum, createQuestionMutation, router, leaveDialog.destination],
+  );
+
+  const handleTypeChange = (newType: QuestionType) => {
+    const currentValues = form.state.values;
+    if (currentValues.type === newType) return;
+
+    const { hasLoss, lostItems } = checkDataLoss(currentValues, newType);
+
+    if (hasLoss) {
+      setTypeChangeDialog({ open: true, newType, lostItems });
+    } else {
+      applyTypeChange(newType);
+    }
+  };
+
+  const applyTypeChange = (newType: QuestionType) => {
+    const currentValues = form.state.values;
+    const converted = convertToType(currentValues, newType);
+    form.setFieldValue("type", converted.type);
+    form.setFieldValue("question", converted.question);
+    form.setFieldValue("answer", converted.answer);
+    setTypeChangeDialog({ open: false, newType: "regular", lostItems: [] });
+  };
+
+  const handleHandoutTypeChange = (newType: HandoutType) => {
+    const currentType = form.state.values.handoutType;
+    if (currentType === newType) return;
+
+    form.setFieldValue("handoutType", newType);
+
+    if (newType === "none") {
+      form.setFieldValue("handout", null);
+      form.setFieldValue("handoutImageId", null);
+    } else if (newType === "text") {
+      form.setFieldValue("handoutImageId", null);
+    } else if (newType === "image") {
+      form.setFieldValue("handout", null);
+    }
+  };
+
+  const formValues = form.state.values;
+  const isStructured = formValues.type !== "regular";
+  const itemCount = formValues.type === "blitz" ? 3 : formValues.type === "duplet" ? 2 : 1;
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => safeNavigate(`/${packageId}/grid`)}
+            className="p-2 rounded-lg hover:bg-muted transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-xl font-bold">Новый вопрос</h1>
+        </div>
+      </div>
+
+      {/* Type switcher */}
+      <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit">
+        {(["regular", "duplet", "blitz"] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => handleTypeChange(type)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              formValues.type === type
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {type === "regular" ? "Обычный" : type === "duplet" ? "Дуплет" : "Блиц"}
+          </button>
+        ))}
+      </div>
+
+      {/* Data loss confirmation dialog */}
+      <AlertDialog
+        open={typeChangeDialog.open}
+        onOpenChange={(open) => setTypeChangeDialog((prev) => ({ ...prev, open }))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Потеря данных</AlertDialogTitle>
+            <AlertDialogDescription>
+              При переключении типа будут удалены:
+              <ul className="list-disc list-inside mt-2">
+                {typeChangeDialog.lostItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTypeChangeDialog((prev) => ({ ...prev, open: false }))}
+            >
+              Отмена
+            </Button>
+            <Button onClick={() => applyTypeChange(typeChangeDialog.newType)}>Продолжить</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Leave confirmation dialog */}
+      <AlertDialog
+        open={leaveDialog.open}
+        onOpenChange={(open) => !open && setLeaveDialog({ open: false, destination: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Несохраненные изменения</AlertDialogTitle>
+            <AlertDialogDescription>
+              У вас есть несохраненные изменения. Сохранить их перед уходом?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setLeaveDialog({ open: false, destination: null })}
+            >
+              Отмена
+            </Button>
+            <Button variant="outline" onClick={handleDiscard}>
+              Не сохранять
+            </Button>
+            <Button onClick={handleSaveAndLeave}>Сохранить</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="space-y-4">
+        <div className="grid gap-4 grid-cols-2">
+          <form.Field name="number">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">Номер</span>
+                <input
+                  type="number"
+                  value={field.state.value ?? ""}
+                  onChange={(e) =>
+                    field.handleChange(e.target.value ? Number.parseInt(e.target.value, 10) : null)
+                  }
+                  onBlur={field.handleBlur}
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+          </form.Field>
+          <form.Field name="author">
+            {(field) => (
+              <label className="block">
+                <span className="text-sm font-medium">Автор</span>
+                <input
+                  type="text"
+                  value={field.state.value ?? ""}
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                  onBlur={field.handleBlur}
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            )}
+          </form.Field>
+        </div>
+
+        {/* Handout type switcher */}
+        <div className="space-y-2">
+          <span className="text-sm font-medium block">Раздатка</span>
+          <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+            {(["none", "text", "image"] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => handleHandoutTypeChange(type)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  formValues.handoutType === type
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {type === "none" ? "Нет" : type === "text" ? "Текст" : "Изображение"}
+              </button>
+            ))}
+          </div>
+
+          {formValues.handoutType === "text" && (
+            <form.Field name="handout">
+              {(field) => (
+                <textarea
+                  value={field.state.value ?? ""}
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                  onBlur={field.handleBlur}
+                  rows={2}
+                  placeholder="Текст раздатки..."
+                  className="w-full rounded-md border px-3 py-2 text-sm"
                 />
               )}
             </form.Field>

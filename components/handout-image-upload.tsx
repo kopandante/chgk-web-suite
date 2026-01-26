@@ -6,11 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  type Image as DbImage,
-  decryptImageData,
-  encryptImageBinary,
-} from "@/lib/db/encrypted-client";
+import { decryptImageData, encryptImageBinary } from "@/lib/db/encrypted-client";
 import { useEncryptionStore } from "@/stores/encryption";
 import { Button } from "./ui/button";
 
@@ -150,6 +146,7 @@ export function HandoutImageUpload({
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drop zone with interactive button inside
     <div
       className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
         isDragging

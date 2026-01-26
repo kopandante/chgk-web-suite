@@ -2,7 +2,7 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation as useConvexMutation } from "convex/react";
-import { Edit, Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -18,11 +18,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePackageSync } from "@/hooks/use-package-sync";
-import {
-  preparePackageCreate,
-  prepareQuestionCreate,
-  type Question,
-} from "@/lib/db/encrypted-client";
+import { preparePackageCreate, type Question } from "@/lib/db/encrypted-client";
 import { useEncryptionStore } from "@/stores/encryption";
 import { usePackageStore } from "@/stores/package";
 
@@ -162,7 +158,6 @@ export default function PackagePage() {
   const { pkg, tours, questions } = usePackageStore();
 
   const [selectedTourId, setSelectedTourId] = useState<Id<"tours"> | null>(null);
-  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
   // Metadata dialog state
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
@@ -173,32 +168,9 @@ export default function PackagePage() {
   const [metadataError, setMetadataError] = useState<string | null>(null);
 
   const updatePackageMutation = useConvexMutation(api.packages.update);
-  const createQuestionMutation = useConvexMutation(api.questions.create);
 
-  const addQuestion = async () => {
-    if (!masterKey || isAddingQuestion) return;
-
-    setIsAddingQuestion(true);
-    try {
-      const maxNumber = Math.max(0, ...questions.map((q) => q.number || 0));
-
-      const questionData = await prepareQuestionCreate(masterKey, {
-        number: maxNumber + 1,
-        question: "",
-      });
-
-      const newId = await createQuestionMutation({
-        packageId,
-        encryptedData: questionData.encryptedData,
-        iv: questionData.iv,
-        orderNum: questions.length,
-      });
-
-      router.push(`/${packageId}/grid/${newId}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Ошибка создания вопроса");
-      setIsAddingQuestion(false);
-    }
+  const addQuestion = () => {
+    router.push(`/${packageId}/grid/new`);
   };
 
   const filteredQuestions = selectedTourId
@@ -391,14 +363,9 @@ export default function PackagePage() {
         <button
           type="button"
           onClick={addQuestion}
-          disabled={isAddingQuestion}
           className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors bg-secondary hover:bg-secondary/80 inline-flex items-center gap-1"
         >
-          {isAddingQuestion ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Plus className="h-3 w-3" />
-          )}
+          <Plus className="h-3 w-3" />
           Добавить
         </button>
       </div>
