@@ -19,6 +19,9 @@ function createMockQuestions(count: number): Question[] {
     source: null,
     author: null,
     handout: null,
+    type: "regular",
+    handoutType: "none",
+    handoutImageId: null,
     created_at: Date.now(),
   }));
 }

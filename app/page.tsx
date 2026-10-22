@@ -1,6 +1,6 @@
 "use client";
 
-import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import { ArrowRight, ArrowUpRight, ExternalLink, Lock, Shield, Zap } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -38,7 +38,7 @@ export default function LandingPage() {
             </span>
           </Link>
           <nav className="flex items-center gap-3">
-            <SignedOut>
+            <Show when="signed-out">
               <Link
                 href="/sign-in"
                 className="px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
@@ -52,8 +52,8 @@ export default function LandingPage() {
                 Начать
                 <ArrowRight className="w-4 h-4" />
               </Link>
-            </SignedOut>
-            <SignedIn>
+            </Show>
+            <Show when="signed-in">
               <Link
                 href="/packages"
                 className="px-5 py-2.5 text-sm font-medium bg-white text-black rounded-lg hover:bg-white/90 transition-colors inline-flex items-center gap-2"
@@ -61,7 +61,7 @@ export default function LandingPage() {
                 Открыть
                 <ArrowRight className="w-4 h-4" />
               </Link>
-            </SignedIn>
+            </Show>
           </nav>
         </div>
       </header>
@@ -93,7 +93,7 @@ export default function LandingPage() {
 
               {/* CTA */}
               <div className="mt-12 flex flex-wrap gap-4 animate-fade-in animate-delay-300">
-                <SignedOut>
+                <Show when="signed-out">
                   <Link
                     href="/sign-up"
                     className="group px-8 py-4 text-base font-medium bg-white text-black rounded-xl hover:bg-white/90 transition-all inline-flex items-center gap-3"
@@ -107,8 +107,8 @@ export default function LandingPage() {
                   >
                     Войти
                   </Link>
-                </SignedOut>
-                <SignedIn>
+                </Show>
+                <Show when="signed-in">
                   <Link
                     href="/packages"
                     className="group px-8 py-4 text-base font-medium bg-white text-black rounded-xl hover:bg-white/90 transition-all inline-flex items-center gap-3"
@@ -116,7 +116,7 @@ export default function LandingPage() {
                     Перейти к пакетам
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Link>
-                </SignedIn>
+                </Show>
               </div>
             </div>
 
@@ -227,7 +227,7 @@ export default function LandingPage() {
             <p className="text-white/50 mb-10 animate-fade-in animate-delay-100">
               Бесплатная регистрация. Никаких ограничений.
             </p>
-            <SignedOut>
+            <Show when="signed-out">
               <Link
                 href="/sign-up"
                 className="group inline-flex items-center gap-3 px-8 py-4 text-base font-medium bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:opacity-90 transition-opacity animate-fade-in animate-delay-200"
@@ -235,8 +235,8 @@ export default function LandingPage() {
                 Создать аккаунт
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
-            </SignedOut>
-            <SignedIn>
+            </Show>
+            <Show when="signed-in">
               <Link
                 href="/packages"
                 className="group inline-flex items-center gap-3 px-8 py-4 text-base font-medium bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:opacity-90 transition-opacity animate-fade-in animate-delay-200"
@@ -244,7 +244,7 @@ export default function LandingPage() {
                 Перейти к пакетам
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
-            </SignedIn>
+            </Show>
           </div>
         </section>
       </main>
