@@ -36,7 +36,7 @@
     "@tanstack/zod-form-adapter": "^0.42.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "convex": "^1.31.6",
+    "convex": "^1.47.0",
     "docx": "^9.5.1",
     "idb-keyval": "^6.2.2",
     "jszip": "^3.10.1",
