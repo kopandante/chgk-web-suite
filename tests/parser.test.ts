@@ -88,7 +88,7 @@ describe("Parser regex tests", () => {
     const question = result.find(([type]) => type === "Question");
     expect(question).toBeDefined();
 
-    const q = question![1] as Record<string, unknown>;
+    const q = question![1] as unknown as Record<string, unknown>;
     expect(q.source).toBe("wikipedia.org");
   });
 
@@ -99,7 +99,7 @@ describe("Parser regex tests", () => {
     const question = result.find(([type]) => type === "Question");
     expect(question).toBeDefined();
 
-    const q = question![1] as Record<string, unknown>;
+    const q = question![1] as unknown as Record<string, unknown>;
     expect(q.author).toBe("Иван Иванов");
   });
 
@@ -112,7 +112,7 @@ describe("Parser regex tests", () => {
     const question = result.find(([type]) => type === "Question");
     expect(question).toBeDefined();
 
-    const q = question![1] as Record<string, unknown>;
+    const q = question![1] as unknown as Record<string, unknown>;
     expect(q.zachet).toBe("альтернативный ответ");
   });
 
@@ -147,7 +147,7 @@ describe("Typography tests", () => {
     const result = parser.parse('Вопрос 1.\nОн сказал "привет"\nОтвет: ответ');
 
     const question = result.find(([type]) => type === "Question");
-    const q = question![1] as Record<string, unknown>;
+    const q = question![1] as unknown as Record<string, unknown>;
     const questionText = q.question as string;
 
     // Should have proper Russian quotes
@@ -173,7 +173,7 @@ describe("Field extraction tests", () => {
     const question = result.find(([type]) => type === "Question");
     expect(question).toBeDefined();
 
-    const q = question![1] as Record<string, unknown>;
+    const q = question![1] as unknown as Record<string, unknown>;
     expect(q.question).toContain("интересное");
     expect(q.answer).toBe("правильный ответ");
     expect(q.zachet).toBe("альтернативный ответ");

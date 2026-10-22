@@ -54,6 +54,9 @@ describe("Question formatting for Telegram", () => {
     source: "https://example.com",
     author: "Автор Вопроса",
     handout: null,
+    type: "regular",
+    handoutType: "none",
+    handoutImageId: null,
     created_at: Date.now(),
   };
 
