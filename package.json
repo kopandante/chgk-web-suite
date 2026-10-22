@@ -16,8 +16,8 @@
     "e2e:screenshots": "bun e2e/screenshot-with-auth.mjs"
   },
   "dependencies": {
-    "@clerk/localizations": "^3.35.2",
-    "@clerk/nextjs": "^6.36.10",
+    "@clerk/localizations": "^4.24.0",
+    "@clerk/nextjs": "^7.9.19",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -42,7 +42,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",
     "mammoth": "^1.11.0",
-    "next": "16.2.6",
+    "next": "16.4.2",
     "next-themes": "^0.4.6",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.3",
@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.12",
-    "@clerk/testing": "^1.13.31",
+    "@clerk/testing": "^2.2.49",
     "@happy-dom/global-registrator": "^20.3.7",
     "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4.1.18",
@@ -67,7 +67,7 @@
     "@types/sql.js": "^1.4.9",
     "happy-dom": "^20.3.7",
     "jsdom": "^27.4.0",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.31",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
   }

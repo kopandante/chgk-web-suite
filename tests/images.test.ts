@@ -47,7 +47,7 @@ describe("DOCX images extraction", () => {
 
     for (const [type, value] of structure) {
       if (type === "Question" && typeof value === "object" && value !== null) {
-        const q = value as Record<string, unknown>;
+        const q = value as unknown as Record<string, unknown>;
         const allText = Object.values(q)
           .filter((v) => typeof v === "string")
           .join(" ");
