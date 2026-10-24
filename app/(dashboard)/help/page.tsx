@@ -10,7 +10,7 @@ import {
   MessageSquare,
   Send,
   Shield,
-  Trello,
+  SquareKanban,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -119,7 +119,7 @@ const faqSections: FaqSectionData[] = [
         question: "Как импортировать из Trello?",
         answer:
           "Подключите Trello в настройках, затем при создании пакета выберите «Импорт из Trello». Выберите доску и список. Каждая карточка станет вопросом, описание карточки будет распарсено на поля.",
-        icon: <Trello className="h-4 w-4" />,
+        icon: <SquareKanban className="h-4 w-4" />,
       },
       {
         question: "Формат карточек Trello",

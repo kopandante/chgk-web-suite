@@ -8,7 +8,7 @@ import {
   HelpCircle,
   Loader2,
   Plus,
-  Trello,
+  SquareKanban,
   Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -340,7 +340,7 @@ export default function NewPackagePage() {
           className="flex items-center gap-4 w-full p-5 text-left hover:bg-muted/50 transition-colors"
         >
           <div className="w-10 h-10 rounded-lg bg-[#0079bf]/10 flex items-center justify-center">
-            <Trello className="h-5 w-5 text-[#0079bf]" />
+            <SquareKanban className="h-5 w-5 text-[#0079bf]" />
           </div>
           <div className="flex-1">
             <span className="font-medium">Импорт из Trello</span>
@@ -367,7 +367,7 @@ export default function NewPackagePage() {
                     onClick={handleTrelloConnect}
                     className="inline-flex items-center gap-2 rounded-lg bg-[#0079bf] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#026aa7] transition-colors"
                   >
-                    <Trello className="h-4 w-4" />
+                    <SquareKanban className="h-4 w-4" />
                     Подключить Trello
                   </button>
                 </div>

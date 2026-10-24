@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Link2, Loader2, Send, ShieldCheck, Trello, Unlink } from "lucide-react";
+import { Copy, Link2, Loader2, Send, ShieldCheck, SquareKanban, Unlink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useEncryption } from "@/hooks/use-encryption";
@@ -233,7 +233,7 @@ export default function SettingsPage() {
       {/* Trello */}
       <div className="rounded-lg border p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <Trello className="h-5 w-5" />
+          <SquareKanban className="h-5 w-5" />
           <h2 className="text-lg font-semibold">Trello</h2>
         </div>
 
